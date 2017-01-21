@@ -1037,8 +1037,7 @@ ngx_http_lua_create_loc_conf(ngx_conf_t *cf)
     /* set by ngx_pcalloc:
      *      conf->access_handler = NULL;
      *      conf->access_handlers = NULL;
-     *      conf->rewrite_src = {{ 0, NULL }, NULL, NULL, NULL};
-     *      conf->rewrite_src_key = NULL
+     *      conf->rewrite_handlers = NULL;
      *      conf->rewrite_handler = NULL;
      *
      *      conf->content_src = {{ 0, NULL }, NULL, NULL, NULL};
@@ -1095,11 +1094,9 @@ ngx_http_lua_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child)
     ngx_http_lua_loc_conf_t *prev = parent;
     ngx_http_lua_loc_conf_t *conf = child;
 
-    if (conf->rewrite_src.value.len == 0) {
-        conf->rewrite_src = prev->rewrite_src;
+    if (conf->rewrite_handlers == NULL) {
+        conf->rewrite_handlers = prev->rewrite_handlers;
         conf->rewrite_handler = prev->rewrite_handler;
-        conf->rewrite_src_key = prev->rewrite_src_key;
-        conf->rewrite_chunkname = prev->rewrite_chunkname;
     }
 
     if (conf->access_handlers == NULL) {
