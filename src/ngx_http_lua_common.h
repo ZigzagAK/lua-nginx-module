@@ -97,6 +97,11 @@ typedef struct {
 #endif
 
 
+#ifndef NGX_HTTP_LUA_MAX_HANDLER_PER_PHASE
+#define NGX_HTTP_LUA_MAX_HANDLER_PER_PHASE 10
+#endif
+
+
 #ifndef NGX_HTTP_LUA_MAX_HEADERS
 #define NGX_HTTP_LUA_MAX_HEADERS 100
 #endif
@@ -236,6 +241,16 @@ union ngx_http_lua_srv_conf_u {
 
 
 typedef struct {
+    ngx_http_complex_value_t     src;       /*  inline script/script
+                                               file path */
+
+    u_char                      *src_key;   /* cached key for source */
+    u_char                      *chunkname;
+    unsigned                     is_inline:1;
+} ngx_http_lua_phase_handler_t;
+
+
+typedef struct {
 #if (NGX_HTTP_SSL)
     ngx_ssl_t              *ssl;  /* shared by SSL cosockets */
     ngx_uint_t              ssl_protocols;
@@ -268,12 +283,7 @@ typedef struct {
 
     u_char                  *rewrite_src_key; /* cached key for rewrite_src */
 
-    u_char                  *access_chunkname;
-    ngx_http_complex_value_t access_src;     /*  access_by_lua
-                                                inline script/script
-                                                file path */
-
-    u_char                  *access_src_key; /* cached key for access_src */
+    ngx_array_t             *access_handlers;  /* access phase handlers */
 
     u_char                  *content_chunkname;
     ngx_http_complex_value_t content_src;    /*  content_by_lua
@@ -526,6 +536,9 @@ typedef struct ngx_http_lua_ctx_s {
     unsigned         acquired_raw_req_socket:1;  /* whether a raw req socket
                                                     is acquired */
     unsigned         seen_body_data:1;
+
+    unsigned         cur_rewrite_index:4;
+    unsigned         cur_access_index:4;
 } ngx_http_lua_ctx_t;
 
 
