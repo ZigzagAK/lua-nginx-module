@@ -2444,8 +2444,6 @@ ngx_http_lua_shdict_fun(lua_State *L)
 
             ngx_shmtx_unlock(&ctx->shpool->mutex);
 
-            lua_pushboolean(L, 1);
-            lua_pushnil(L);
             return 2;
         }
 
@@ -2485,9 +2483,6 @@ remove:
 
     if (value.data == NULL) {
         ngx_shmtx_unlock(&ctx->shpool->mutex);
-
-        lua_pushboolean(L, 1);
-        lua_pushnil(L);
         return 2;
     }
 
@@ -2543,8 +2538,6 @@ remove:
 
     ngx_shmtx_unlock(&ctx->shpool->mutex);
 
-    lua_pushboolean(L, 1);
-    lua_pushnil(L);
     return 2;
 }
 
