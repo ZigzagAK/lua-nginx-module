@@ -2253,7 +2253,7 @@ ngx_http_lua_shdict_fun(lua_State *L)
         if (exptime < 0) {
             return luaL_error(L, "bad \"exptime\" argument");
         }
-        lua_rawget(L, 3);
+        lua_pushvalue(L, 3);
     }
 
     ngx_shmtx_lock(&ctx->shpool->mutex);
