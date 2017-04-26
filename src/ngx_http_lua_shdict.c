@@ -2185,6 +2185,7 @@ ngx_http_lua_shdict_fun(lua_State *L)
     double                       num;
     u_char                       c;
     lua_Number                   exptime = 0;
+    uint64_t                     expires = 0;
     u_char                      *p;
     ngx_rbtree_node_t           *node;
     ngx_time_t                  *tp;
@@ -2199,8 +2200,8 @@ ngx_http_lua_shdict_fun(lua_State *L)
 
     n = lua_gettop(L);
 
-    if (n != 3) {
-        return luaL_error(L, "expecting 3 arguments, "
+    if (n != 3 && n != 4) {
+        return luaL_error(L, "expecting 3 or 4 arguments, "
                           "but only seen %d", n);
     }
 
@@ -2247,6 +2248,13 @@ ngx_http_lua_shdict_fun(lua_State *L)
                    "fetching key \"%V\" in shared dict \"%V\"", &key, &name);
 #endif /* NGX_DEBUG */
 
+    if (n >= 4) {
+        exptime = luaL_checknumber(L, 4);
+        if (exptime < 0) {
+            return luaL_error(L, "bad \"exptime\" argument");
+        }
+    }
+
     ngx_shmtx_lock(&ctx->shpool->mutex);
 
 #if 1
@@ -2275,6 +2283,7 @@ ngx_http_lua_shdict_fun(lua_State *L)
         value.len = (size_t) sd->value_len;
 
         user_flags = sd->user_flags;
+        expires = sd->expires;
     } else {
         value_type = LUA_TNIL;
     }
@@ -2425,10 +2434,9 @@ ngx_http_lua_shdict_fun(lua_State *L)
             if (exptime > 0) {
                 tp = ngx_timeofday();
                 sd->expires = (uint64_t) tp->sec * 1000 + tp->msec
-                              + (uint64_t) (exptime * 1000);
-
+                            + (uint64_t) (exptime * 1000);
             } else {
-                sd->expires = 0;
+                sd->expires = expires;
             }
 
             sd->user_flags = user_flags;
@@ -2518,7 +2526,7 @@ remove:
                       + (uint64_t) (exptime * 1000);
 
     } else {
-        sd->expires = 0;
+        sd->expires = expires;
     }
 
     sd->user_flags = user_flags;
