@@ -69,8 +69,6 @@ static void ngx_http_lua_socket_dummy_handler(ngx_http_request_t *r,
     ngx_http_lua_socket_tcp_upstream_t *u);
 static ngx_int_t ngx_http_lua_socket_tcp_read(ngx_http_request_t *r,
     ngx_http_lua_socket_tcp_upstream_t *u);
-static void ngx_http_lua_socket_read_handler(ngx_http_request_t *r,
-    ngx_http_lua_socket_tcp_upstream_t *u);
 static int ngx_http_lua_socket_tcp_receive_retval_handler(ngx_http_request_t *r,
     ngx_http_lua_socket_tcp_upstream_t *u, lua_State *L);
 static ngx_int_t ngx_http_lua_socket_read_line(void *data, ssize_t bytes);
@@ -745,6 +743,9 @@ ngx_http_lua_socket_tcp_connect(lua_State *L)
 
         u->ft_type |= NGX_HTTP_LUA_SOCKET_FT_RESOLVER;
 
+        coctx->cleanup = NULL;
+        coctx->data = NULL;
+
         u->resolved->ctx = NULL;
         lua_pushnil(L);
         lua_pushfstring(L, "%s could not be resolved", host.data);
@@ -1334,7 +1335,8 @@ ngx_http_lua_socket_tcp_sslhandshake(lua_State *L)
 
 #ifdef SSL_CTRL_SET_TLSEXT_HOSTNAME
 
-                if (SSL_set_tlsext_host_name(c->ssl->connection, name.data)
+                if (SSL_set_tlsext_host_name(c->ssl->connection,
+                                             (char *) name.data)
                     == 0)
                 {
                     lua_pushnil(L);
@@ -2709,6 +2711,11 @@ ngx_http_lua_socket_tcp_settimeout(lua_State *L)
     }
 
     timeout = (ngx_int_t) lua_tonumber(L, 2);
+    if (timeout > NGX_MAX_INT32_VALUE) {
+        return luaL_error(L, "lua tcp socket timeout %f will overflow",
+                          (lua_Number) timeout);
+    }
+
     lua_pushinteger(L, timeout);
     lua_pushinteger(L, timeout);
 
@@ -2752,8 +2759,22 @@ ngx_http_lua_socket_tcp_settimeouts(lua_State *L)
     }
 
     connect_timeout = (ngx_int_t) lua_tonumber(L, 2);
+    if (connect_timeout > NGX_MAX_INT32_VALUE) {
+        return luaL_error(L, "lua tcp socket connect timeout %f will overflow",
+                          (lua_Number) connect_timeout);
+    }
+
     send_timeout = (ngx_int_t) lua_tonumber(L, 3);
+    if (send_timeout > NGX_MAX_INT32_VALUE) {
+        return luaL_error(L, "lua tcp socket send timeout %f will overflow",
+                          (lua_Number) send_timeout);
+    }
+
     read_timeout = (ngx_int_t) lua_tonumber(L, 4);
+    if (read_timeout > NGX_MAX_INT32_VALUE) {
+        return luaL_error(L, "lua tcp socket read timeout %f will overflow",
+                          (lua_Number) read_timeout);
+    }
 
     lua_rawseti(L, 1, SOCKET_READ_TIMEOUT_INDEX);
     lua_rawseti(L, 1, SOCKET_SEND_TIMEOUT_INDEX);
@@ -4419,15 +4440,18 @@ ngx_http_lua_req_socket_rev_handler(ngx_http_request_t *r)
 
     ctx = ngx_http_get_module_ctx(r, ngx_http_lua_module);
     if (ctx == NULL) {
+        r->read_event_handler = ngx_http_block_reading;
         return;
     }
 
     u = ctx->downstream;
-    if (u) {
-        u->read_event_handler(r, u);
+    if (u == NULL || u->peer.connection == NULL) {
+        r->read_event_handler = ngx_http_block_reading;
+        return;
     }
-}
 
+    u->read_event_handler(r, u);
+}
 
 static int
 ngx_http_lua_socket_tcp_getreusedtimes(lua_State *L)
