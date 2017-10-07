@@ -264,6 +264,9 @@ ngx_http_lua_balancer_get_peer(ngx_peer_connection_t *pc, void *data)
     ngx_http_lua_srv_conf_t            *lscf;
     ngx_http_lua_main_conf_t           *lmcf;
     ngx_http_lua_balancer_peer_data_t  *bp = data;
+    ngx_http_upstream_rr_peers_t       *peers;
+    ngx_http_upstream_rr_peers_t       *primary;
+    ngx_http_upstream_rr_peer_t        *peer;
 
     ngx_log_debug1(NGX_LOG_DEBUG_HTTP, pc->log, 0,
                    "lua balancer peer, tries: %ui", pc->tries);
@@ -306,9 +309,14 @@ ngx_http_lua_balancer_get_peer(ngx_peer_connection_t *pc, void *data)
      */
     lmcf->balancer_peer_data = bp;
 
+    primary = bp->rrp.peers;
+
+    ngx_http_upstream_rr_peers_wlock(primary);
+
     rc = lscf->balancer.handler(r, lscf, L);
 
     if (rc == NGX_ERROR) {
+        ngx_http_upstream_rr_peers_unlock(primary);
         return NGX_ERROR;
     }
 
@@ -321,15 +329,71 @@ ngx_http_lua_balancer_get_peer(ngx_peer_connection_t *pc, void *data)
             || rc >= NGX_HTTP_SPECIAL_RESPONSE
 #endif
         ) {
+            ngx_http_upstream_rr_peers_unlock(primary);
             return rc;
         }
 
         if (rc > NGX_OK) {
+            ngx_http_upstream_rr_peers_unlock(primary);
             return NGX_ERROR;
         }
     }
 
     if (bp->sockaddr && bp->socklen) {
+        for (peers = primary; peers; peers = peers->next) {
+            for (peer = peers->peer; peer; peer = peer->next) {
+                if (ngx_memn2cmp((u_char *) peer->sockaddr, (u_char *) bp->sockaddr,
+                                 peer->socklen, bp->socklen) == 0) {
+                    bp->sockaddr = NULL;
+                    bp->socklen = 0;
+
+                    pc->cached = 0;
+                    pc->connection = NULL;
+
+                    if (peer->down) {
+                        goto busy;
+                    }
+
+                    if (peer->max_fails
+                        && peer->fails >= peer->max_fails
+                        && ngx_time() - peer->checked <= peer->fail_timeout)
+                    {
+                        goto busy;
+                    }
+
+                    if (peer->max_conns && peer->conns >= peer->max_conns) {
+                        goto busy;
+                    }
+
+                    bp->rrp.current = peer;
+
+                    pc->sockaddr = peer->sockaddr;
+                    pc->socklen = peer->socklen;
+                    pc->name = &peer->name;
+
+                    if (ngx_time() - peer->checked > peer->fail_timeout) {
+                        peer->checked = ngx_time();
+                    }
+
+                    peer->conns++;
+
+                    ngx_http_upstream_rr_peers_unlock(primary);
+
+                    return NGX_OK;
+
+busy:
+
+                    ngx_http_upstream_rr_peers_unlock(primary);
+
+                    pc->name = peers->name;
+
+                    return NGX_BUSY;
+                }
+            }
+        }
+
+        ngx_http_upstream_rr_peers_unlock(primary);
+
         pc->sockaddr = bp->sockaddr;
         pc->socklen = bp->socklen;
         pc->cached = 0;
@@ -346,6 +410,8 @@ ngx_http_lua_balancer_get_peer(ngx_peer_connection_t *pc, void *data)
 
         return NGX_OK;
     }
+
+    ngx_http_upstream_rr_peers_unlock(primary);
 
     return ngx_http_upstream_get_round_robin_peer(pc, &bp->rrp);
 }
