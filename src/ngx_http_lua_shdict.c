@@ -2266,13 +2266,7 @@ ngx_http_lua_shdict_fun(lua_State *L)
 
     dd("shdict lookup returns %d", (int) rc);
 
-    if (rc == NGX_DONE) {
-        ngx_shmtx_unlock(&ctx->shpool->mutex);
-        lua_pushnil(L);
-        return 1;
-    }
-
-    /* rc == NGX_OK or rc == NGX_DECLINED */
+    /* rc == NGX_OK or rc == NGX_DECLINED or rc == NGX_DONE */
 
     if (rc == NGX_OK) {
         value_type = sd->value_type;
