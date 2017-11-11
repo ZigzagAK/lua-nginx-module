@@ -330,5 +330,5 @@ ngx_http_lua_log_init_worker_error(ngx_log_t *log, u_char *buf, size_t len)
         buf = p;
     }
 
-    return ngx_snprintf(buf, len, ", context: init_worker_by_lua*");
+    return buf;
 }

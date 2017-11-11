@@ -727,10 +727,6 @@ ngx_http_lua_log_timer_error(ngx_log_t *log, u_char *buf, size_t len)
 
     dd("ctx = %p", c);
 
-    p = ngx_snprintf(buf, len, ", context: ngx.timer");
-    len -= p - buf;
-    buf = p;
-
     if (c->addr_text.len) {
         p = ngx_snprintf(buf, len, ", client: %V", &c->addr_text);
         len -= p - buf;
