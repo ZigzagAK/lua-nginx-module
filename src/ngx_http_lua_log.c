@@ -179,6 +179,22 @@ log_wrapper(ngx_log_t *log, const char *ident, ngx_uint_t level,
 
                 continue;
 
+            case LUA_TUSERDATA:
+                if (lua_touserdata(L, i) == NULL) {
+                    size += sizeof("null") - 1;
+                    break;
+                }
+
+                if (!luaL_callmeta(L, i, "__tostring")) {
+                    return luaL_argerror(L, i, "expected userdata to have "
+                                         "__tostring metamethod");
+                }
+
+                lua_tolstring(L, -1, &len);
+                size += len;
+
+                break;
+
             default:
                 msg = lua_pushfstring(L, "string, number, boolean, or nil "
                                       "expected, got %s",
@@ -239,6 +255,12 @@ log_wrapper(ngx_log_t *log, const char *ident, ngx_uint_t level,
                 break;
 
             case LUA_TTABLE:
+                luaL_callmeta(L, i, "__tostring");
+                q = (u_char *) lua_tolstring(L, -1, &len);
+                p = ngx_copy(p, q, len);
+                break;
+
+            case LUA_TUSERDATA:
                 luaL_callmeta(L, i, "__tostring");
                 q = (u_char *) lua_tolstring(L, -1, &len);
                 p = ngx_copy(p, q, len);
