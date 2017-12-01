@@ -468,6 +468,22 @@ ngx_http_lua_shdict_get_zone(lua_State *L, int index)
 }
 
 
+static u_char *
+ngx_http_lua_get_key(lua_State *L, int index, size_t *len)
+{
+    if (lua_touserdata(L, index) == NULL) {
+        return (u_char *) luaL_checklstring(L, index, len);
+    }
+
+    if (!luaL_callmeta(L, index, "__tostring")) {
+        luaL_error(L, "userdata at #%d doesn't have tostring method", index);
+        return NULL;
+    }
+
+    return (u_char *) lua_tolstring(L, -1, len);
+}
+
+
 static int
 ngx_http_lua_shdict_get_helper(lua_State *L, int get_stale)
 {
@@ -510,7 +526,7 @@ ngx_http_lua_shdict_get_helper(lua_State *L, int get_stale)
         return 2;
     }
 
-    key.data = (u_char *) luaL_checklstring(L, 2, &key.len);
+    key.data = (u_char *) ngx_http_lua_get_key(L, 2, &key.len);
 
     if (key.len == 0) {
         lua_pushnil(L);
@@ -978,7 +994,7 @@ ngx_http_lua_shdict_set_helper(lua_State *L, int flags)
         return 2;
     }
 
-    key.data = (u_char *) luaL_checklstring(L, 2, &key.len);
+    key.data = (u_char *) ngx_http_lua_get_key(L, 2, &key.len);
 
     if (key.len == 0) {
         lua_pushnil(L);
@@ -1317,7 +1333,7 @@ ngx_http_lua_shdict_incr(lua_State *L)
         return 2;
     }
 
-    key.data = (u_char *) luaL_checklstring(L, 2, &key.len);
+    key.data = (u_char *) ngx_http_lua_get_key(L, 2, &key.len);
 
     if (key.len == 0) {
         lua_pushnil(L);
@@ -1682,7 +1698,7 @@ ngx_http_lua_shdict_push_helper(lua_State *L, int flags)
         return 2;
     }
 
-    key.data = (u_char *) luaL_checklstring(L, 2, &key.len);
+    key.data = (u_char *) ngx_http_lua_get_key(L, 2, &key.len);
 
     if (key.len == 0) {
         lua_pushnil(L);
@@ -1975,7 +1991,7 @@ ngx_http_lua_shdict_pop_helper(lua_State *L, int flags)
         return 2;
     }
 
-    key.data = (u_char *) luaL_checklstring(L, 2, &key.len);
+    key.data = (u_char *) ngx_http_lua_get_key(L, 2, &key.len);
 
     if (key.len == 0) {
         lua_pushnil(L);
@@ -2143,7 +2159,7 @@ ngx_http_lua_shdict_llen(lua_State *L)
         return 2;
     }
 
-    key.data = (u_char *) luaL_checklstring(L, 2, &key.len);
+    key.data = (u_char *) ngx_http_lua_get_key(L, 2, &key.len);
 
     if (key.len == 0) {
         lua_pushnil(L);
@@ -2251,7 +2267,7 @@ ngx_http_lua_shdict_fun(lua_State *L)
         return 2;
     }
 
-    key.data = (u_char *) luaL_checklstring(L, 2, &key.len);
+    key.data = (u_char *) ngx_http_lua_get_key(L, 2, &key.len);
 
     if (key.len == 0) {
         lua_pushnil(L);
@@ -2670,7 +2686,7 @@ ngx_http_lua_shared_dict_ttl(lua_State *L)
         return 2;
     }
 
-    key.data = (u_char *) luaL_checklstring(L, 2, &key.len);
+    key.data = (u_char *) ngx_http_lua_get_key(L, 2, &key.len);
 
     if (key.len == 0) {
         lua_pushnil(L);
@@ -2769,7 +2785,7 @@ ngx_http_lua_shared_dict_expire(lua_State *L)
         return 2;
     }
 
-    key.data = (u_char *) luaL_checklstring(L, 2, &key.len);
+    key.data = (u_char *) ngx_http_lua_get_key(L, 2, &key.len);
 
     if (key.len == 0) {
         lua_pushnil(L);
