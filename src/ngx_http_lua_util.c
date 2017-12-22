@@ -122,6 +122,8 @@ static ngx_int_t
 static lua_State *ngx_http_lua_new_state(lua_State *parent_vm,
     ngx_cycle_t *cycle, ngx_http_lua_main_conf_t *lmcf, ngx_log_t *log);
 static int ngx_http_lua_get_raw_phase_context(lua_State *L);
+static void ngx_http_lua_delete_co_ctx(ngx_http_request_t *r,
+    ngx_http_lua_ctx_t *ctx, ngx_http_lua_co_ctx_t *coctx);
 
 
 #ifndef LUA_PATH_SEP
@@ -349,6 +351,8 @@ void
 ngx_http_lua_del_thread(ngx_http_request_t *r, lua_State *L,
     ngx_http_lua_ctx_t *ctx, ngx_http_lua_co_ctx_t *coctx)
 {
+    ngx_http_lua_delete_co_ctx(r, ctx, coctx);
+
     if (coctx->co_ref == LUA_NOREF) {
         return;
     }
@@ -831,13 +835,6 @@ ngx_http_lua_reset_ctx(ngx_http_request_t *r, lua_State *L,
                    "lua reset ctx");
 
     ngx_http_lua_finalize_threads(r, ctx, L);
-
-#if 0
-    if (ctx->user_co_ctx) {
-        /* no way to destroy a list but clean up the whole pool */
-        ctx->user_co_ctx = NULL;
-    }
-#endif
 
     ngx_memzero(&ctx->entry_co_ctx, sizeof(ngx_http_lua_co_ctx_t));
 
@@ -1637,32 +1634,33 @@ ngx_http_lua_process_flushing_coroutines(ngx_http_request_t *r,
         sentinel = ctx->user_co_ctx->rbtree.sentinel;
 
         if (node != sentinel) {
-			for (node = ngx_rbtree_min(node, sentinel);
-				 node;
-				 node = ngx_rbtree_next(&ctx->user_co_ctx->rbtree, node))
-			{
-				co_ctx = (ngx_http_lua_co_ctx_node_t *) &node->color;
 
-				coctx = &co_ctx->coctx;
+            for (node = ngx_rbtree_min(node, sentinel);
+                 node;
+                 node = ngx_rbtree_next(&ctx->user_co_ctx->rbtree, node))
+            {
+                co_ctx = (ngx_http_lua_co_ctx_node_t *) &node->color;
 
-				if (coctx->flushing) {
-					coctx->flushing = 0;
-					ctx->flushing_coros--;
-					n--;
-					ctx->cur_co_ctx = coctx;
+                coctx = &co_ctx->coctx;
 
-					rc = ngx_http_lua_flush_resume_helper(r, ctx);
-					if (rc == NGX_ERROR || rc >= NGX_OK) {
-						return rc;
-					}
+                if (coctx->flushing) {
+                    coctx->flushing = 0;
+                    ctx->flushing_coros--;
+                    n--;
+                    ctx->cur_co_ctx = coctx;
 
-					/* rc == NGX_DONE */
+                    rc = ngx_http_lua_flush_resume_helper(r, ctx);
+                    if (rc == NGX_ERROR || rc >= NGX_OK) {
+                        return rc;
+                    }
 
-					if (n == 0) {
-						return NGX_DONE;
-					}
-				}
-			}
+                    /* rc == NGX_DONE */
+
+                    if (n == 0) {
+                        return NGX_DONE;
+                    }
+                }
+            }
         }
     }
 
@@ -3023,7 +3021,7 @@ ngx_http_lua_get_co_ctx(lua_State *L, ngx_http_lua_ctx_t *ctx)
 
         co_ctx = (ngx_http_lua_co_ctx_node_t *) &node->color;
 
-      	return &co_ctx->coctx;
+        return &co_ctx->coctx;
     }
 
     return NULL;
@@ -3031,42 +3029,38 @@ ngx_http_lua_get_co_ctx(lua_State *L, ngx_http_lua_ctx_t *ctx)
 
 
 static void
-ngx_http_lua_co_ctx_rbtree_insert_value(ngx_rbtree_node_t *temp,
-    ngx_rbtree_node_t *node, ngx_rbtree_node_t *sentinel)
+ngx_http_lua_delete_co_ctx(ngx_http_request_t *r, ngx_http_lua_ctx_t *ctx, ngx_http_lua_co_ctx_t *coctx)
 {
-    ngx_rbtree_node_t          **p;
-    ngx_http_lua_co_ctx_node_t  *lrn, *lrnt;
+    ngx_rbtree_node_t           *node, *sentinel;
+    ngx_uint_t                   key = (ngx_uint_t) coctx->co;
 
-    for ( ;; ) {
-
-        if (node->key < temp->key) {
-
-            p = &temp->left;
-
-        } else if (node->key > temp->key) {
-
-            p = &temp->right;
-
-        } else { /* node->key == temp->key */
-
-            lrn = (ngx_http_lua_co_ctx_node_t *) &node->color;
-            lrnt = (ngx_http_lua_co_ctx_node_t *) &temp->color;
-
-            p = lrn->coctx.co < lrnt->coctx.co ? &temp->left : &temp->right;
-        }
-
-        if (*p == sentinel) {
-            break;
-        }
-
-        temp = *p;
+    if (ctx->user_co_ctx == NULL) {
+        return;
     }
 
-    *p = node;
-    node->parent = temp;
-    node->left = sentinel;
-    node->right = sentinel;
-    ngx_rbt_red(node);
+    node = ctx->user_co_ctx->rbtree.root;
+    sentinel = ctx->user_co_ctx->rbtree.sentinel;
+
+    while (node != sentinel) {
+
+        if (key < node->key) {
+            node = node->left;
+            continue;
+        }
+
+        if (key > node->key) {
+            node = node->right;
+            continue;
+        }
+
+        /* hash == node->key */
+
+        ngx_rbtree_delete(&ctx->user_co_ctx->rbtree, node);
+
+        ngx_pfree(ctx->user_co_ctx->pool, node);
+
+        return;
+    }
 }
 
 
@@ -3075,27 +3069,30 @@ ngx_http_lua_create_co_ctx(ngx_http_request_t *r, ngx_http_lua_ctx_t *ctx, lua_S
 {
     ngx_rbtree_node_t          *node;
     size_t                      size;
-    ngx_uint_t                  hash = (ngx_uint_t) L;
     ngx_http_lua_co_ctx_node_t *co_ctx;
 
     if (ctx->user_co_ctx == NULL) {
-    	ctx->user_co_ctx = ngx_pcalloc(r->pool, sizeof(ngx_http_user_co_ctx_t));
-    	if (ctx->user_co_ctx == NULL) {
-    		return NULL;
-    	}
+        ctx->user_co_ctx = ngx_pcalloc(r->pool, sizeof(ngx_http_user_co_ctx_t));
+        if (ctx->user_co_ctx == NULL) {
+            return NULL;
+        }
+
+        ctx->user_co_ctx->pool = ngx_create_pool(NGX_DEFAULT_POOL_SIZE,
+        		                                 r->connection ? r->connection->log : ngx_cycle->log);
+
         ngx_rbtree_init(&ctx->user_co_ctx->rbtree, &ctx->user_co_ctx->sentinel,
-                        ngx_http_lua_co_ctx_rbtree_insert_value);
+                        ngx_rbtree_insert_value);
     }
 
     size = offsetof(ngx_rbtree_node_t, color)
          + sizeof(ngx_http_lua_co_ctx_node_t);
 
-    node = ngx_pcalloc(r->pool, size);
+    node = ngx_pcalloc(ctx->user_co_ctx->pool, size);
     if (node == NULL) {
         return NULL;
     }
 
-    node->key = hash;
+    node->key = (ngx_uint_t) L;
 
     co_ctx = (ngx_http_lua_co_ctx_node_t *) &node->color;
 
@@ -3229,11 +3226,12 @@ ngx_http_lua_finalize_threads(ngx_http_request_t *r,
         sentinel = ctx->user_co_ctx->rbtree.sentinel;
 
         if (node != sentinel) {
+
             for (node = ngx_rbtree_min(node, sentinel);
                  node;
                  node = ngx_rbtree_next(&ctx->user_co_ctx->rbtree, node))
             {
-            	co_ctx = (ngx_http_lua_co_ctx_node_t *) &node->color;
+                co_ctx = (ngx_http_lua_co_ctx_node_t *) &node->color;
 
                 coctx = &co_ctx->coctx;
 
@@ -3260,6 +3258,9 @@ ngx_http_lua_finalize_threads(ngx_http_request_t *r,
                 }
             }
         }
+
+        ngx_destroy_pool(ctx->user_co_ctx->pool);
+        ngx_pfree(r->pool, ctx->user_co_ctx);
 
         ctx->user_co_ctx = NULL;
     }
