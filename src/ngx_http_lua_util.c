@@ -351,10 +351,8 @@ void
 ngx_http_lua_del_thread(ngx_http_request_t *r, lua_State *L,
     ngx_http_lua_ctx_t *ctx, ngx_http_lua_co_ctx_t *coctx)
 {
-    ngx_http_lua_delete_co_ctx(r, ctx, coctx);
-
     if (coctx->co_ref == LUA_NOREF) {
-        return;
+        goto delete_coctx;
     }
 
     ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
@@ -370,6 +368,10 @@ ngx_http_lua_del_thread(ngx_http_request_t *r, lua_State *L,
     coctx->co_status = NGX_HTTP_LUA_CO_DEAD;
 
     lua_pop(L, 1);
+
+delete_coctx:
+
+    ngx_http_lua_delete_co_ctx(r, ctx, coctx);
 }
 
 
@@ -3029,8 +3031,10 @@ ngx_http_lua_get_co_ctx(lua_State *L, ngx_http_lua_ctx_t *ctx)
 
 
 static void
-ngx_http_lua_delete_co_ctx(ngx_http_request_t *r, ngx_http_lua_ctx_t *ctx, ngx_http_lua_co_ctx_t *coctx)
+ngx_http_lua_delete_co_ctx(ngx_http_request_t *r, ngx_http_lua_ctx_t *ctx,
+    ngx_http_lua_co_ctx_t *coctx)
 {
+#if 0
     ngx_rbtree_node_t           *node, *sentinel;
     ngx_uint_t                   key = (ngx_uint_t) coctx->co;
 
@@ -3053,19 +3057,20 @@ ngx_http_lua_delete_co_ctx(ngx_http_request_t *r, ngx_http_lua_ctx_t *ctx, ngx_h
             continue;
         }
 
-        /* hash == node->key */
+        /* key == node->key */
 
         ngx_rbtree_delete(&ctx->user_co_ctx->rbtree, node);
-
         ngx_pfree(ctx->user_co_ctx->pool, node);
 
         return;
     }
+#endif
 }
 
 
 ngx_http_lua_co_ctx_t *
-ngx_http_lua_create_co_ctx(ngx_http_request_t *r, ngx_http_lua_ctx_t *ctx, lua_State *L)
+ngx_http_lua_create_co_ctx(ngx_http_request_t *r, ngx_http_lua_ctx_t *ctx,
+    lua_State *L)
 {
     ngx_rbtree_node_t          *node;
     size_t                      size;
@@ -3077,8 +3082,12 @@ ngx_http_lua_create_co_ctx(ngx_http_request_t *r, ngx_http_lua_ctx_t *ctx, lua_S
             return NULL;
         }
 
+#if 0
         ctx->user_co_ctx->pool = ngx_create_pool(NGX_DEFAULT_POOL_SIZE,
-        		                                 r->connection ? r->connection->log : ngx_cycle->log);
+                                                 r->connection->log);
+#else
+        ctx->user_co_ctx->pool = r->pool;
+#endif
 
         ngx_rbtree_init(&ctx->user_co_ctx->rbtree, &ctx->user_co_ctx->sentinel,
                         ngx_rbtree_insert_value);
@@ -3259,8 +3268,10 @@ ngx_http_lua_finalize_threads(ngx_http_request_t *r,
             }
         }
 
+#if 0
         ngx_destroy_pool(ctx->user_co_ctx->pool);
         ngx_pfree(r->pool, ctx->user_co_ctx);
+#endif
 
         ctx->user_co_ctx = NULL;
     }
