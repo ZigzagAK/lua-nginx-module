@@ -450,6 +450,7 @@ ngx_http_lua_rewrite_by_lua_block(ngx_conf_t *cf, ngx_command_t *cmd,
 char *
 ngx_http_lua_rewrite_by_lua(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 {
+    size_t                           chunkname_len;
     u_char                          *p, *chunkname;
     ngx_str_t                       *value;
     ngx_http_lua_main_conf_t        *lmcf;
@@ -599,6 +600,7 @@ ngx_http_lua_access_by_lua_block(ngx_conf_t *cf, ngx_command_t *cmd,
 char *
 ngx_http_lua_access_by_lua(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 {
+    size_t                           chunkname_len;
     u_char                          *p, *chunkname;
     ngx_str_t                       *value;
     ngx_http_lua_main_conf_t        *lmcf;
