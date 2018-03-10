@@ -3,6 +3,7 @@
 	<name>lua-nginx-module</name>
 	<comment></comment>
 	<projects>
+		<project>nginx</project>
 	</projects>
 	<buildSpec>
 		<buildCommand>
