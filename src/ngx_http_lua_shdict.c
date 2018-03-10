@@ -79,7 +79,8 @@ enum {
     SHDICT_TNUMBER = 3,     /* same as LUA_TNUMBER */
     SHDICT_TSTRING = 4,     /* same as LUA_TSTRING */
     SHDICT_TLIST = 5,
-    SHDICT_TZSET = 6
+    SHDICT_TZSET = 6,
+    SHDICT_TUSERDATA = 7    /* same as LUA_TUSERDATA */
 };
 
 
@@ -149,6 +150,7 @@ ngx_http_lua_shdict_push_znode_value(lua_State *L,
 
             lua_pushboolean(L, c ? 1 : 0);
             break;
+
         }
     } else {
 
@@ -616,7 +618,7 @@ ngx_http_lua_shdict_get_zone(lua_State *L, int index)
 
 
 static u_char *
-ngx_http_lua_get_key(lua_State *L, int index, size_t *len)
+ngx_http_lua_get_string(lua_State *L, int index, size_t *len)
 {
     if (lua_touserdata(L, index) == NULL) {
         return (u_char *) luaL_checklstring(L, index, len);
@@ -673,7 +675,7 @@ ngx_http_lua_shdict_get_helper(lua_State *L, int get_stale)
         return 2;
     }
 
-    key.data = (u_char *) ngx_http_lua_get_key(L, 2, &key.len);
+    key.data = (u_char *) ngx_http_lua_get_string(L, 2, &key.len);
 
     if (key.len == 0) {
         lua_pushnil(L);
@@ -1141,7 +1143,7 @@ ngx_http_lua_shdict_set_helper(lua_State *L, int flags)
         return 2;
     }
 
-    key.data = (u_char *) ngx_http_lua_get_key(L, 2, &key.len);
+    key.data = (u_char *) ngx_http_lua_get_string(L, 2, &key.len);
 
     if (key.len == 0) {
         lua_pushnil(L);
@@ -1187,20 +1189,26 @@ ngx_http_lua_shdict_set_helper(lua_State *L, int flags)
         ngx_str_null(&value);
         break;
 
+    case SHDICT_TUSERDATA:
+        value.data = (u_char *) ngx_http_lua_get_string(L, 3, &value.len);
+        value_type = SHDICT_TSTRING;
+        break;
+
+
     default:
         lua_pushnil(L);
         lua_pushliteral(L, "bad value type");
         return 2;
     }
 
-    if (n >= 4) {
+    if (n >= 4 && !lua_isnil(L, 4)) {
         exptime = luaL_checknumber(L, 4);
         if (exptime < 0) {
             return luaL_error(L, "bad \"exptime\" argument");
         }
     }
 
-    if (n == 5) {
+    if (n == 5 && !lua_isnil(L, 5)) {
         user_flags = (uint32_t) luaL_checkinteger(L, 5);
     }
 
@@ -1473,7 +1481,7 @@ ngx_http_lua_shdict_incr(lua_State *L)
         return 2;
     }
 
-    key.data = (u_char *) ngx_http_lua_get_key(L, 2, &key.len);
+    key.data = (u_char *) ngx_http_lua_get_string(L, 2, &key.len);
 
     if (key.len == 0) {
         lua_pushnil(L);
@@ -1491,7 +1499,7 @@ ngx_http_lua_shdict_incr(lua_State *L)
 
     value = luaL_checknumber(L, 3);
 
-    if (n == 4) {
+    if (n == 4 && !lua_isnil(L, 4)) {
         init = luaL_checknumber(L, 4);
     }
 
@@ -1832,7 +1840,7 @@ ngx_http_lua_shdict_push_helper(lua_State *L, int flags)
         return 2;
     }
 
-    key.data = (u_char *) ngx_http_lua_get_key(L, 2, &key.len);
+    key.data = (u_char *) ngx_http_lua_get_string(L, 2, &key.len);
 
     if (key.len == 0) {
         lua_pushnil(L);
@@ -1860,6 +1868,11 @@ ngx_http_lua_shdict_push_helper(lua_State *L, int flags)
         value.len = sizeof(double);
         num = lua_tonumber(L, 3);
         value.data = (u_char *) &num;
+        break;
+
+    case SHDICT_TUSERDATA:
+        value.data = (u_char *) ngx_http_lua_get_string(L, 3, &value.len);
+        value_type = SHDICT_TSTRING;
         break;
 
     default:
@@ -2122,7 +2135,7 @@ ngx_http_lua_shdict_pop_helper(lua_State *L, int flags)
         return 2;
     }
 
-    key.data = (u_char *) ngx_http_lua_get_key(L, 2, &key.len);
+    key.data = (u_char *) ngx_http_lua_get_string(L, 2, &key.len);
 
     if (key.len == 0) {
         lua_pushnil(L);
@@ -2290,7 +2303,7 @@ ngx_http_lua_shdict_llen(lua_State *L)
         return 2;
     }
 
-    key.data = (u_char *) ngx_http_lua_get_key(L, 2, &key.len);
+    key.data = (u_char *) ngx_http_lua_get_string(L, 2, &key.len);
 
     if (key.len == 0) {
         lua_pushnil(L);
@@ -2348,7 +2361,7 @@ ngx_http_lua_shdict_fun(lua_State *L)
     int                          n;
     ngx_str_t                    key;
     uint32_t                     hash;
-    ngx_int_t                    rc, rc_l;
+    ngx_int_t                    rc;
     ngx_http_lua_shdict_ctx_t   *ctx;
     ngx_http_lua_shdict_node_t  *sd;
     ngx_str_t                    value;
@@ -2366,7 +2379,6 @@ ngx_http_lua_shdict_fun(lua_State *L)
     int32_t                      user_flags = 0;
     ngx_queue_t                 *queue, *q;
     u_char                      *err_msg;
-    size_t                       len;
     ngx_str_t                    name;
 
     n = lua_gettop(L);
@@ -2398,7 +2410,7 @@ ngx_http_lua_shdict_fun(lua_State *L)
         return 2;
     }
 
-    key.data = (u_char *) ngx_http_lua_get_key(L, 2, &key.len);
+    key.data = (u_char *) ngx_http_lua_get_string(L, 2, &key.len);
 
     if (key.len == 0) {
         lua_pushnil(L);
@@ -2419,12 +2431,13 @@ ngx_http_lua_shdict_fun(lua_State *L)
                    "fetching key \"%V\" in shared dict \"%V\"", &key, &name);
 #endif /* NGX_DEBUG */
 
-    if (n >= 4) {
+    lua_pushvalue(L, 3);
+
+    if (n == 4 && !lua_isnil(L, 4)) {
         exptime = luaL_checknumber(L, 4);
         if (exptime < 0) {
             return luaL_error(L, "bad \"exptime\" argument");
         }
-        lua_pushvalue(L, 3);
     }
 
     ngx_shmtx_lock(&ctx->shpool->mutex);
@@ -2517,19 +2530,15 @@ ngx_http_lua_shdict_fun(lua_State *L)
 
     lua_pushinteger(L, user_flags);
 
-    rc_l = lua_pcall(L, 2, 2, 1);
+    if (lua_pcall(L, 2, 2, 0) != 0) {
 
-    dd("rc_l == %d", (int) rc_l);
-
-    if (rc_l != 0) {
         ngx_shmtx_unlock(&ctx->shpool->mutex);
 
         /*  error occurred when calling user code */
-        err_msg = (u_char *) lua_tolstring(L, -1, &len);
+        err_msg = (u_char *) lua_tostring(L, -1);
 
         if (err_msg == NULL) {
             err_msg = (u_char *) "unknown reason";
-            len = sizeof("unknown reason") - 1;
         }
 
         return luaL_error(L, "user callback error "
@@ -2817,7 +2826,7 @@ ngx_http_lua_shared_dict_ttl(lua_State *L)
         return 2;
     }
 
-    key.data = (u_char *) ngx_http_lua_get_key(L, 2, &key.len);
+    key.data = (u_char *) ngx_http_lua_get_string(L, 2, &key.len);
 
     if (key.len == 0) {
         lua_pushnil(L);
@@ -2916,7 +2925,7 @@ ngx_http_lua_shared_dict_expire(lua_State *L)
         return 2;
     }
 
-    key.data = (u_char *) ngx_http_lua_get_key(L, 2, &key.len);
+    key.data = (u_char *) ngx_http_lua_get_string(L, 2, &key.len);
 
     if (key.len == 0) {
         lua_pushnil(L);
@@ -3022,7 +3031,7 @@ ngx_http_lua_shdict_zset(lua_State *L)
         return 2;
     }
 
-    key.data = (u_char *) ngx_http_lua_get_key(L, 2, &key.len);
+    key.data = (u_char *) ngx_http_lua_get_string(L, 2, &key.len);
 
     if (key.len == 0) {
         lua_pushnil(L);
@@ -3038,7 +3047,7 @@ ngx_http_lua_shdict_zset(lua_State *L)
 
     hash = ngx_crc32_short(key.data, key.len);
 
-    zkey.data = (u_char *) ngx_http_lua_get_key(L, 3, &zkey.len);
+    zkey.data = (u_char *) ngx_http_lua_get_string(L, 3, &zkey.len);
 
     if (zkey.len == 0) {
         lua_pushnil(L);
@@ -3075,6 +3084,11 @@ ngx_http_lua_shdict_zset(lua_State *L)
             value.data = &c;
             break;
 
+        case SHDICT_TUSERDATA:
+            value.data = (u_char *) ngx_http_lua_get_string(L, 4, &value.len);
+            value_type = SHDICT_TSTRING;
+            break;
+
         case SHDICT_TNIL:
             break;
 
@@ -3084,7 +3098,7 @@ ngx_http_lua_shdict_zset(lua_State *L)
             return 2;
         }
 
-        if (n == 5) {
+        if (n == 5 && !lua_isnil(L, 5)) {
             exptime = luaL_checknumber(L, 5);
             if (exptime < 0) {
                 return luaL_error(L, "bad \"exptime\" argument");
@@ -3415,7 +3429,7 @@ ngx_http_lua_shdict_zrem(lua_State *L)
         return 2;
     }
 
-    key.data = (u_char *) ngx_http_lua_get_key(L, 2, &key.len);
+    key.data = (u_char *) ngx_http_lua_get_string(L, 2, &key.len);
 
     if (key.len == 0) {
         lua_pushnil(L);
@@ -3431,7 +3445,7 @@ ngx_http_lua_shdict_zrem(lua_State *L)
 
     hash = ngx_crc32_short(key.data, key.len);
 
-    zkey.data = (u_char *) ngx_http_lua_get_key(L, 3, &zkey.len);
+    zkey.data = (u_char *) ngx_http_lua_get_string(L, 3, &zkey.len);
 
     if (zkey.len == 0) {
         lua_pushnil(L);
@@ -3586,7 +3600,7 @@ ngx_http_lua_shdict_zcard(lua_State *L)
         return 2;
     }
 
-    key.data = (u_char *) ngx_http_lua_get_key(L, 2, &key.len);
+    key.data = (u_char *) ngx_http_lua_get_string(L, 2, &key.len);
 
     if (key.len == 0) {
         lua_pushnil(L);
@@ -3686,7 +3700,7 @@ ngx_http_lua_shdict_zget(lua_State *L)
         return 2;
     }
 
-    key.data = (u_char *) ngx_http_lua_get_key(L, 2, &key.len);
+    key.data = (u_char *) ngx_http_lua_get_string(L, 2, &key.len);
 
     if (key.len == 0) {
         lua_pushnil(L);
@@ -3702,7 +3716,7 @@ ngx_http_lua_shdict_zget(lua_State *L)
 
     hash = ngx_crc32_short(key.data, key.len);
 
-    zkey.data = (u_char *) ngx_http_lua_get_key(L, 3, &zkey.len);
+    zkey.data = (u_char *) ngx_http_lua_get_string(L, 3, &zkey.len);
 
     if (zkey.len == 0) {
         lua_pushnil(L);
@@ -3833,7 +3847,7 @@ ngx_http_lua_shdict_zgetall(lua_State *L)
         return 2;
     }
 
-    key.data = (u_char *) ngx_http_lua_get_key(L, 2, &key.len);
+    key.data = (u_char *) ngx_http_lua_get_string(L, 2, &key.len);
 
     if (key.len == 0) {
         lua_pushnil(L);
@@ -3937,7 +3951,6 @@ ngx_http_lua_shdict_zscan(lua_State *L)
     ngx_http_lua_shdict_zset_node_t *zset_node;
     ngx_str_t                        lbound;
     u_char                          *err_msg;
-    size_t                           len;
 
     n = lua_gettop(L);
 
@@ -3968,7 +3981,7 @@ ngx_http_lua_shdict_zscan(lua_State *L)
         return 2;
     }
 
-    key.data = (u_char *) ngx_http_lua_get_key(L, 2, &key.len);
+    key.data = (u_char *) ngx_http_lua_get_string(L, 2, &key.len);
 
     if (key.len == 0) {
         lua_pushnil(L);
@@ -4086,11 +4099,10 @@ ngx_http_lua_shdict_zscan(lua_State *L)
                     ngx_shmtx_unlock(&ctx->shpool->mutex);
 
                     /*  error occurred when calling user code */
-                    err_msg = (u_char *) lua_tolstring(L, -1, &len);
+                    err_msg = (u_char *) lua_tostring(L, -1);
 
                     if (err_msg == NULL) {
                         err_msg = (u_char *) "unknown reason";
-                        len = sizeof("unknown reason") - 1;
                     }
 
                     return luaL_error(L, "user callback error "
