@@ -1,5 +1,7 @@
 #!/bin/bash
 
+ulimit -c unlimited
+
 DIR=$(pwd)
 nginx_fname=$(ls -1 $DIR/install/*.tar.gz)
 
@@ -15,7 +17,7 @@ export LUA_CPATH=$DIR/install/tmp/$folder/lib/lua/5.1/cjson.so
 
 ret=0
 
-for t in $(ls t/*.t)
+for t in $(ls tt/*.t)
 do
   echo "Tests : "$t
   prove $t

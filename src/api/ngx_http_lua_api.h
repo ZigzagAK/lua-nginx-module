@@ -34,14 +34,15 @@ enum {
 
 
 typedef struct {
-    uint8_t         type;
-
     union {
         int         b; /* boolean */
         lua_Number  n; /* number */
         ngx_str_t   s; /* string or userdata */
     } value;
 
+    int32_t user_flags;
+    uint8_t type;
+    u_char valid;
 } ngx_http_lua_value_t;
 
 
@@ -71,34 +72,29 @@ ngx_shm_zone_t *ngx_http_lua_shared_memory_add(ngx_conf_t *cf, ngx_str_t *name,
 #define NGX_LUA_SHDICT_NO_MEMORY      (NGX_HTTP_INSUFFICIENT_STORAGE)
 
 
-typedef ngx_int_t (*get_fun_t)(ngx_http_lua_value_t value,
-    uint32_t user_flags, int stale, void *userdata);
+typedef ngx_int_t (*get_fun_t)(ngx_http_lua_value_t *value,
+    int stale, void *userctx);
 
 ngx_int_t ngx_http_lua_shdict_api_fun(ngx_shm_zone_t *shm_zone,
-    ngx_str_t key, get_fun_t fun, void *userdata);
+    ngx_str_t key, get_fun_t fun, int64_t exptime, void *userctx);
 
 ngx_int_t ngx_http_lua_shdict_api_get(ngx_shm_zone_t *shm_zone,
     ngx_str_t key, ngx_http_lua_value_t *value);
 
 ngx_int_t ngx_http_lua_shdict_api_set(ngx_shm_zone_t *shm_zone,
-    ngx_str_t key, ngx_http_lua_value_t value, int exptime,
-    int32_t user_flags);
+    ngx_str_t key, ngx_http_lua_value_t value, int exptime);
 
 ngx_int_t ngx_http_lua_shdict_api_safe_set(ngx_shm_zone_t *shm_zone,
-    ngx_str_t key, ngx_http_lua_value_t value, int exptime,
-    int32_t user_flags);
+    ngx_str_t key, ngx_http_lua_value_t value, int exptime);
 
 ngx_int_t ngx_http_lua_shdict_api_add(ngx_shm_zone_t *shm_zone,
-    ngx_str_t key, ngx_http_lua_value_t value, int exptime,
-    int32_t user_flags);
+    ngx_str_t key, ngx_http_lua_value_t value, int exptime);
 
 ngx_int_t ngx_http_lua_shdict_api_safe_add(ngx_shm_zone_t *shm_zone,
-    ngx_str_t key, ngx_http_lua_value_t value, int exptime,
-    int32_t user_flags);
+    ngx_str_t key, ngx_http_lua_value_t value, int exptime);
 
 ngx_int_t ngx_http_lua_shdict_api_replace(ngx_shm_zone_t *shm_zone,
-    ngx_str_t key, ngx_http_lua_value_t value, int exptime,
-    int32_t user_flags);
+    ngx_str_t key, ngx_http_lua_value_t value, int exptime);
 
 ngx_int_t ngx_http_lua_shdict_api_delete(ngx_shm_zone_t *shm_zone,
     ngx_str_t key);
@@ -106,10 +102,10 @@ ngx_int_t ngx_http_lua_shdict_api_delete(ngx_shm_zone_t *shm_zone,
 ngx_int_t ngx_http_lua_shdict_api_zset(ngx_shm_zone_t *shm_zone,
     ngx_str_t key, ngx_str_t zkey, ngx_http_lua_value_t value, int exptime);
 
-ngx_int_t ngx_http_lua_shdict_api_zget(ngx_shm_zone_t *shm_zone,
-    ngx_str_t key, ngx_str_t zkey, ngx_http_lua_value_t *value);
+typedef ngx_int_t (*fun_t)(ngx_str_t zkey, ngx_http_lua_value_t *value);
 
-typedef ngx_int_t (*fun_t)(ngx_str_t zkey, ngx_http_lua_value_t value);
+ngx_int_t ngx_http_lua_shdict_api_zfun(ngx_shm_zone_t *shm_zone,
+    ngx_str_t key, ngx_str_t zkey, fun_t fun);
 
 ngx_int_t ngx_http_lua_shdict_api_zscan(ngx_shm_zone_t *shm_zone,
     ngx_str_t key, fun_t fun, ngx_str_t lbound);

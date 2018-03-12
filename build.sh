@@ -73,7 +73,7 @@ function build_debug() {
               --with-stream \
               --with-debug \
               --with-http_auth_request_module \
-              --with-cc-opt="-O0" \
+              --with-cc-opt="-O0 -DDDEBUG=0" \
               --add-module=../ngx_devel_kit \
               --add-module=../../../lua-nginx-module \
               --add-module=../echo-nginx-module \
