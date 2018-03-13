@@ -135,6 +135,11 @@ ngx_int_t ngx_http_lua_shdict_api_zset(ngx_shm_zone_t *shm_zone,
 ngx_int_t ngx_http_lua_shdict_api_zset_locked(ngx_shm_zone_t *shm_zone,
     ngx_str_t key, ngx_str_t zkey, ngx_http_lua_value_t value, int exptime);
 
+/* copying structure into value */
+ngx_int_t ngx_http_lua_shdict_api_zget(ngx_shm_zone_t *shm_zone,
+    ngx_str_t key, ngx_str_t zkey, ngx_http_lua_value_t *value);
+
+/* value contents the reference (string/userdata) to data */
 ngx_int_t ngx_http_lua_shdict_api_zget_locked(ngx_shm_zone_t *shm_zone,
     ngx_str_t key, ngx_str_t zkey, ngx_http_lua_value_t *value);
 
