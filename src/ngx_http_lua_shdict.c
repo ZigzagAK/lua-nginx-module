@@ -2885,6 +2885,11 @@ ngx_http_lua_shdict_fun_pcall(ngx_http_lua_value_t *value,
         lua_pushboolean(L, value->value.b);
         break;
 
+    case SHDICT_TUSERDATA:
+
+    	lua_pushliteral(L, "SHDICT_TUSERDATA");
+        break;
+
     default:
 
         ngx_snprintf(ctx->err, NGX_MAX_ERROR_STR,
@@ -4152,76 +4157,38 @@ ngx_http_lua_shdict_zgetall(lua_State *L)
 }
 
 
-static int
-ngx_http_lua_shdict_zscan(lua_State *L)
+ngx_int_t
+ngx_http_lua_shdict_api_zscan_locked(ngx_shm_zone_t *shm_zone,
+    ngx_str_t key, fun_t fun, ngx_str_t lbound, void *userctx)
 {
-    int                              n;
-    ngx_str_t                        key;
-    uint32_t                         hash;
-    ngx_int_t                        rc;
-    ngx_http_lua_shdict_ctx_t       *ctx;
-    ngx_http_lua_shdict_node_t      *sd;
-    ngx_rbtree_node_t               *node;
-    ngx_rbtree_node_t               *tmp = NULL;
-    ngx_rbtree_node_t               *sentinel;
-    ngx_shm_zone_t                  *shm_zone;
-    ngx_http_lua_shdict_zset_t      *zset;
-    ngx_http_lua_shdict_zset_node_t *zset_node;
-    ngx_str_t                        lbound;
-    u_char                          *err_msg;
+    uint32_t                            hash;
+    ngx_int_t                           rc;
+    ngx_http_lua_shdict_node_t         *sd;
+    ngx_rbtree_node_t                  *node;
+    ngx_rbtree_node_t                  *tmp = NULL;
+    ngx_rbtree_node_t                  *sentinel;
+    ngx_http_lua_shdict_zset_t         *zset;
+    ngx_http_lua_shdict_zset_node_t    *zset_node;
+    ngx_str_t                           zkey;
+    ngx_http_lua_value_t                value;
+    lua_shdict_get_helper_getter_ctx_t *ctx = userctx;
 
-    n = lua_gettop(L);
-
-    if (ngx_http_lua_shdict_check_required(L, &shm_zone, &key, 3, 4) != NGX_OK) {
-        return lua_gettop(L) - n;
-    }
-
-    if (lua_type(L, 3) != LUA_TFUNCTION) {
-        return luaL_error(L, "bad \"callback\" argument");
-    }
-
-    ctx = shm_zone->data;
+    ctx->err[0] = 0;
 
     hash = ngx_crc32_short(key.data, key.len);
-
-    if (n == 4) {
-        lbound.data = (u_char *) lua_tolstring(L, 4, &lbound.len);
-    } else {
-        lbound.data = NULL;
-    }
-
-    ngx_shmtx_lock(&ctx->shpool->mutex);
-
-#if 1
-    ngx_http_lua_shdict_expire(ctx, 1);
-#endif
 
     rc = ngx_http_lua_shdict_lookup(shm_zone, hash, key.data, key.len, &sd);
 
     dd("shdict lookup returned %d", (int) rc);
 
     if (rc == NGX_DECLINED || rc == NGX_DONE) {
-        ngx_shmtx_unlock(&ctx->shpool->mutex);
-        lua_pushnil(L);
-        return 1;
-    }
 
-    /* rc == NGX_OK */
+    	return NGX_LUA_SHDICT_NOT_FOUND;
+    }
 
     if (sd->value_type != SHDICT_TZSET) {
-        ngx_shmtx_unlock(&ctx->shpool->mutex);
 
-        lua_pushnil(L);
-        lua_pushliteral(L, "value not a zset");
-        return 2;
-    }
-
-    if (sd->value_len <= 0) {
-        ngx_shmtx_unlock(&ctx->shpool->mutex);
-
-        return luaL_error(L, "bad lua zgetall length found for key %s "
-                          "in shared_dict %s: %lu", key.data, ctx->name.data,
-                          (unsigned long) sd->value_len);
+    	return NGX_LUA_SHDICT_BAD_VALUE_TYPE;
     }
 
     zset = ngx_http_lua_shdict_zset_get(sd, key.len);
@@ -4230,8 +4197,6 @@ ngx_http_lua_shdict_zscan(lua_State *L)
     sentinel = zset->rbtree.sentinel;
 
     if (node != sentinel) {
-
-        n = lua_gettop(L);
 
         if (lbound.data != NULL) {
 
@@ -4271,48 +4236,158 @@ ngx_http_lua_shdict_zscan(lua_State *L)
 
             for (; node; node = ngx_rbtree_next(&zset->rbtree, node))
             {
-                lua_pushvalue(L, 3);
-
                 zset_node = (ngx_http_lua_shdict_zset_node_t *) &node->color;
 
-                /* push zkey */
-                lua_pushstring(L, (char *) zset_node->data);
+                zkey.data = zset_node->data;
+                zkey.len = ngx_strlen(zkey.data);
 
-                /* push zvalue */
-                ngx_http_lua_shdict_zset_znode_value_push(L, zset_node);
+                value = ngx_http_lua_shdict_zset_znode_value_get(zset_node);
 
-                if (lua_pcall(L, 2, 2, 0) != 0) {
+                if (fun(zkey, &value, userctx)) {
 
-                    ngx_shmtx_unlock(&ctx->shpool->mutex);
+                	if (ctx->err[0]) {
 
-                    /*  error occurred when calling user code */
-                    err_msg = (u_char *) lua_tostring(L, -1);
+                		return NGX_LUA_SHDICT_ERROR;
+                	}
 
-                    if (err_msg == NULL) {
-                        err_msg = (u_char *) "unknown reason";
-                    }
-
-                    return luaL_error(L, "user callback error "
-                                      "shared_dict %s: %s", ctx->name.data, err_msg);
+                	break;
                 }
-
-                if (lua_isboolean(L, -1)) {
-
-                    if (lua_toboolean(L, -1)) {
-
-                        /* stop on true */
-                        break;
-                    }
-                }
-
-                lua_settop(L, n);
             }
         }
     }
 
+    return NGX_LUA_SHDICT_OK;
+}
+
+
+ngx_int_t
+ngx_http_lua_shdict_api_zscan(ngx_shm_zone_t *shm_zone,
+    ngx_str_t key, fun_t fun, ngx_str_t lbound, void *userctx)
+{
+    ngx_int_t                  rc;
+    ngx_http_lua_shdict_ctx_t *ctx = shm_zone->data;
+
+    ngx_shmtx_lock(&ctx->shpool->mutex);
+
+    rc = ngx_http_lua_shdict_api_zscan_locked(shm_zone,
+        key, fun, lbound, userctx);
+
     ngx_shmtx_unlock(&ctx->shpool->mutex);
 
-    lua_pushboolean(L, 1);
+    return rc;
+}
+
+
+
+ngx_int_t
+ngx_http_lua_shdict_zscan_getter(ngx_str_t zkey, ngx_http_lua_value_t *value,
+    void *userctx)
+{
+	lua_shdict_get_helper_getter_ctx_t *ctx = userctx;
+	lua_State                          *L = ctx->L;
+	u_char                             *err_msg;
+	int                                 b;
+
+	int n = lua_gettop(L);
+
+	lua_pushvalue(L, 3);
+
+    /* push zkey */
+    lua_pushlstring(L, (char *) zkey.data, zkey.len);
+
+    /* push zvalue */
+    ngx_http_lua_shdict_get_helper_push_value(value, 0, userctx);
+
+    if (lua_pcall(L, lua_gettop(L) - n - 1, 1, 0) == 0) {
+
+    	b = 0;
+    } else {
+
+        /*  error occurred when calling user code */
+    	err_msg = (u_char *) lua_tostring(L, -1);
+
+        if (err_msg == NULL) {
+        	err_msg = (u_char *) "unknown";
+        }
+
+        ngx_snprintf(ctx->err, NGX_MAX_ERROR_STR,
+    	             "user callback error shared_dict %s: %s",
+			         ctx->name.data, err_msg);
+
+        b = 1;
+    }
+
+    lua_settop(L, n);
+
+    return b;
+}
+
+
+static int
+ngx_http_lua_shdict_zscan(lua_State *L)
+{
+    int                                n;
+    ngx_int_t                          rc;
+    ngx_http_lua_shdict_ctx_t         *ctx;
+    ngx_shm_zone_t                    *shm_zone;
+    ngx_str_t                          key;
+    ngx_str_t                          lbound;
+    lua_shdict_get_helper_getter_ctx_t userctx = {
+        .L = L, .get_stale = 0
+    };
+
+
+    n = lua_gettop(L);
+
+    if (ngx_http_lua_shdict_check_required(L, &shm_zone, &key, 3, 4) != NGX_OK) {
+        return lua_gettop(L) - n;
+    }
+
+    if (lua_type(L, 3) != LUA_TFUNCTION) {
+        return luaL_error(L, "bad \"callback\" argument");
+    }
+
+    ctx = shm_zone->data;
+    userctx.name = ctx->name;
+
+    if (n == 4) {
+        lbound.data = (u_char *) lua_tolstring(L, 4, &lbound.len);
+    } else {
+        lbound.data = NULL;
+    }
+
+    rc = ngx_http_lua_shdict_api_zscan(shm_zone,
+        key, ngx_http_lua_shdict_zscan_getter, lbound, &userctx);
+
+    switch (rc) {
+
+    case NGX_LUA_SHDICT_OK:
+
+    	lua_pushboolean(L, 1);
+        break;
+
+    case NGX_LUA_SHDICT_NOT_FOUND:
+
+        lua_pushnil(L);
+        break;
+
+    case NGX_LUA_SHDICT_BAD_VALUE_TYPE:
+
+        lua_pushnil(L);
+        lua_pushliteral(L, "value not a zset");
+        return 2;
+
+    case NGX_LUA_SHDICT_ERROR:
+
+        lua_pushnil(L);
+        lua_pushstring(L, userctx.err[0] ? (const char *) userctx.err
+            : "unknown");
+        break;
+
+    default:
+
+    	break;
+    }
 
     return 1;
 }
