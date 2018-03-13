@@ -163,6 +163,12 @@ ngx_int_t ngx_http_lua_shdict_api_zrem(ngx_shm_zone_t *shm_zone,
 ngx_int_t ngx_http_lua_shdict_api_zrem_locked(ngx_shm_zone_t *shm_zone,
     ngx_str_t key, ngx_str_t zkey);
 
+uint32_t ngx_http_lua_shdict_api_zcard(ngx_shm_zone_t *shm_zone,
+    ngx_str_t key);
+
+uint32_t ngx_http_lua_shdict_api_zcard_locked(ngx_shm_zone_t *shm_zone,
+    ngx_str_t key);
+
 #endif /* _NGX_HTTP_LUA_API_H_INCLUDED_ */
 
 /* vi:set ft=c ts=4 sw=4 et fdm=marker: */
