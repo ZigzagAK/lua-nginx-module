@@ -178,7 +178,7 @@ c3
 d4
 e5
 12345
-nil
+0
 --- no_error_log
 [error]
 
@@ -232,6 +232,8 @@ e5
         content_by_lua_block {
             local dogs = ngx.shared.dogs
 
+            local space = dogs:free_space()
+
             local vals = {
               { "a", 1 },
               { "aa", 11 },
@@ -258,7 +260,15 @@ e5
               ngx.say(k, v)
             end, "aa")
 
+            for _,v in ipairs(vals) do
+               dogs:zrem("foo", v[1])
+            end
+
+            ngx.say(space - dogs:free_space())
+
             dogs:delete("foo")
+
+            ngx.say(space - dogs:free_space())
         }
     }
 --- request
@@ -268,5 +278,7 @@ GET /test
 aa11
 aaa111
 aab112
+0
+0
 --- no_error_log
 [error]

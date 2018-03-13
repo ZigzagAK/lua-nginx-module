@@ -28,7 +28,7 @@ __DATA__
 
             local val, flags = dogs:fun("foo", function(val, flags)
               return "hello", 999 
-            end, 1)
+            end, 0.1)
             if val then
                 ngx.say("val=", val, " flags=", flags)
             else
@@ -42,7 +42,7 @@ __DATA__
                 ngx.say("get err: ", flags)
             end
 
-            ngx.sleep(1.1)
+            ngx.sleep(1)
 
             local val, flags = dogs:get_stale("foo")
             if val then
