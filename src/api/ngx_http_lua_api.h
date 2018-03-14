@@ -138,6 +138,18 @@ ngx_int_t ngx_http_lua_shdict_api_delete(ngx_shm_zone_t *shm_zone,
 ngx_int_t ngx_http_lua_shdict_api_delete_locked(ngx_shm_zone_t *shm_zone,
     ngx_str_t key);
 
+ngx_int_t ngx_http_lua_shdict_api_expire(ngx_shm_zone_t *shm_zone,
+    ngx_str_t key, int64_t exptime);
+
+ngx_int_t ngx_http_lua_shdict_api_expire_locked(ngx_shm_zone_t *shm_zone,
+    ngx_str_t key, int64_t exptime);
+
+ngx_int_t ngx_http_lua_shdict_api_ttl(ngx_shm_zone_t *shm_zone,
+    ngx_str_t key, int64_t *ttl);
+
+ngx_int_t ngx_http_lua_shdict_api_ttl_locked(ngx_shm_zone_t *shm_zone,
+    ngx_str_t key, int64_t *ttl);
+
 /* zset */
 
 ngx_int_t ngx_http_lua_shdict_api_zset(ngx_shm_zone_t *shm_zone,
