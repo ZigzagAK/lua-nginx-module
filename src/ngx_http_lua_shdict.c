@@ -529,7 +529,7 @@ static ngx_inline ngx_int_t
 ngx_http_lua_shdict_rbtree_insert_node(ngx_http_lua_shdict_ctx_t *ctx,
                                        ngx_str_t key, ngx_str_t value,
                                        uint8_t value_type,
-                                       int64_t expires, uint32_t user_flags,
+                                       uint64_t expires, uint32_t user_flags,
                                        int flags, int *forcible)
 {
     ngx_rbtree_node_t            *node;
@@ -556,7 +556,8 @@ ngx_http_lua_shdict_rbtree_insert_node(ngx_http_lua_shdict_ctx_t *ctx,
     if (node == NULL) {
 
         if (flags & NGX_HTTP_LUA_SHDICT_SAFE_STORE) {
-            return NGX_LUA_SHDICT_NO_MEMORY;
+
+        	return NGX_LUA_SHDICT_NO_MEMORY;
         }
 
         ngx_log_debug1(NGX_LOG_DEBUG_HTTP, ctx->log, 0,
@@ -564,7 +565,8 @@ ngx_http_lua_shdict_rbtree_insert_node(ngx_http_lua_shdict_ctx_t *ctx,
                        "due to memory shortage for entry \"%V\"", &key);
 
         for (i = 0; i < 30 && node == NULL; i++) {
-            if (ngx_http_lua_shdict_expire(ctx, 0) == 0) {
+
+        	if (ngx_http_lua_shdict_expire(ctx, 0) == 0) {
                 break;
             }
 
@@ -576,6 +578,7 @@ ngx_http_lua_shdict_rbtree_insert_node(ngx_http_lua_shdict_ctx_t *ctx,
         }
 
         if (node == NULL) {
+
             return NGX_LUA_SHDICT_NO_MEMORY;
         }
     }
@@ -609,7 +612,7 @@ static ngx_inline void
 ngx_http_lua_shdict_rbtree_replace_value(ngx_http_lua_shdict_ctx_t *ctx,
                                          ngx_http_lua_shdict_node_t *sd,
                                          u_char *value, uint8_t value_type,
-                                         int64_t expires, uint32_t user_flags)
+                                         uint64_t expires, uint32_t user_flags)
 {
     ngx_log_debug0(NGX_LOG_DEBUG_HTTP, ctx->log, 0,
                    "lua shared dict: found old entry and value "
@@ -2149,6 +2152,8 @@ ngx_http_lua_shdict_lua_set_helper(lua_State *L, int flags)
     int                          forcible = 0;
     int                          n = lua_gettop(L);
 
+    ngx_str_null(&key);
+
     if (ngx_http_lua_shdict_check_required(L, &shm_zone, &key, 3, 5) != NGX_OK) {
         return lua_gettop(L) - n;
     }
@@ -3228,8 +3233,6 @@ ngx_http_lua_shdict_api_ttl_locked(ngx_shm_zone_t *shm_zone,
         return NGX_LUA_SHDICT_ERROR;
     }
 
-    ngx_str_null(&key);
-
     hash = ngx_crc32_short(key.data, key.len);
 
 #if (NGX_DEBUG)
@@ -3248,7 +3251,7 @@ ngx_http_lua_shdict_api_ttl_locked(ngx_shm_zone_t *shm_zone,
     }
 
     if (sd->expires == 0) {
-        *ttl = INT_MAX;
+        *ttl = 0;
         return NGX_LUA_SHDICT_OK;
     }
 
@@ -3297,7 +3300,7 @@ ngx_http_lua_shared_dict_ttl(lua_State *L)
 
     case NGX_LUA_SHDICT_OK:
 
-        lua_pushinteger(L, ttl);
+        lua_pushnumber(L, (lua_Number ) ttl / 1000);
         return 1;
 
     case NGX_LUA_SHDICT_NOT_FOUND:
