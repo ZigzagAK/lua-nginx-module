@@ -2889,7 +2889,7 @@ ngx_http_lua_shdict_lua_pop_helper(lua_State *L, int flags)
 
     default:
 
-    	/* unreachable */
+        /* unreachable */
         break;
     }
 
@@ -2922,7 +2922,7 @@ ngx_http_lua_shdict_api_llen_locked(ngx_shm_zone_t *shm_zone,
 
     if (!len) {
 
-    	return NGX_LUA_SHDICT_ERROR;
+        return NGX_LUA_SHDICT_ERROR;
     }
 
     ctx = shm_zone->data;
@@ -2941,7 +2941,7 @@ ngx_http_lua_shdict_api_llen_locked(ngx_shm_zone_t *shm_zone,
 
         if (sd->value_type != SHDICT_TLIST) {
 
-        	return NGX_LUA_SHDICT_BAD_VALUE_TYPE;
+            return NGX_LUA_SHDICT_BAD_VALUE_TYPE;
         }
 
         ngx_queue_remove(&sd->queue);
@@ -2991,8 +2991,8 @@ ngx_http_lua_shdict_llen(lua_State *L)
     case NGX_LUA_SHDICT_OK:
     case NGX_LUA_SHDICT_NOT_FOUND:
 
-    	lua_pushnumber(L, len);
-    	return 1;
+        lua_pushnumber(L, len);
+        return 1;
 
     case NGX_LUA_SHDICT_BAD_VALUE_TYPE:
 
@@ -3002,8 +3002,8 @@ ngx_http_lua_shdict_llen(lua_State *L)
 
     case NGX_LUA_SHDICT_ERROR:
 
-    	/* unreachable */
-    	break;
+        /* unreachable */
+        break;
     }
 
     return luaL_error(L, "unexpected");
@@ -3225,7 +3225,7 @@ ngx_http_lua_shdict_api_ttl_locked(ngx_shm_zone_t *shm_zone,
 
     if (!ttl) {
 
-    	return NGX_LUA_SHDICT_ERROR;
+        return NGX_LUA_SHDICT_ERROR;
     }
 
     ngx_str_null(&key);
@@ -3244,20 +3244,20 @@ ngx_http_lua_shdict_api_ttl_locked(ngx_shm_zone_t *shm_zone,
 
     if (rc == NGX_DECLINED || rc == NGX_DONE) {
 
-    	return NGX_LUA_SHDICT_NOT_FOUND;
+        return NGX_LUA_SHDICT_NOT_FOUND;
     }
 
     if (sd->expires == 0) {
-    	*ttl = INT_MAX;
-    	return NGX_LUA_SHDICT_OK;
+        *ttl = INT_MAX;
+        return NGX_LUA_SHDICT_OK;
     }
 
     tp = ngx_timeofday();
     now = (uint64_t) tp->sec * 1000 + tp->msec;
 
-  	*ttl = sd->expires - now;
+      *ttl = sd->expires - now;
 
-  	return NGX_LUA_SHDICT_OK;
+      return NGX_LUA_SHDICT_OK;
 }
 
 
@@ -3297,19 +3297,19 @@ ngx_http_lua_shared_dict_ttl(lua_State *L)
 
     case NGX_LUA_SHDICT_OK:
 
-    	lua_pushinteger(L, ttl);
-    	return 1;
+        lua_pushinteger(L, ttl);
+        return 1;
 
     case NGX_LUA_SHDICT_NOT_FOUND:
 
-    	lua_pushnil(L);
-    	lua_pushliteral(L, "not found");
-    	return 2;
+        lua_pushnil(L);
+        lua_pushliteral(L, "not found");
+        return 2;
 
     default:
 
-    	/* unreachable */
-    	break;
+        /* unreachable */
+        break;
     }
 
     return luaL_error(L, "unexpected");
@@ -3341,7 +3341,7 @@ ngx_http_lua_shdict_api_expire_locked(ngx_shm_zone_t *shm_zone,
 
     if (rc == NGX_DECLINED || rc == NGX_DONE) {
 
-    	return NGX_LUA_SHDICT_NOT_FOUND;
+        return NGX_LUA_SHDICT_NOT_FOUND;
     }
 
     sd->expires = ngx_http_lua_get_expires(exptime);
@@ -3397,19 +3397,19 @@ ngx_http_lua_shared_dict_expire(lua_State *L)
 
     case NGX_LUA_SHDICT_OK:
 
-    	lua_pushboolean(L, 1);
-    	return 1;
+        lua_pushboolean(L, 1);
+        return 1;
 
     case NGX_LUA_SHDICT_NOT_FOUND:
 
-    	lua_pushnil(L);
-    	lua_pushliteral(L, "not found");
-    	return 2;
+        lua_pushnil(L);
+        lua_pushliteral(L, "not found");
+        return 2;
 
     default:
 
-    	/* unreachable */
-    	break;
+        /* unreachable */
+        break;
     }
 
     return luaL_error(L, "unexpected");
@@ -4049,7 +4049,7 @@ ngx_http_lua_shdict_api_zcard_locked(ngx_shm_zone_t *shm_zone,
 
     if (!len) {
 
-    	return NGX_LUA_SHDICT_ERROR;
+        return NGX_LUA_SHDICT_ERROR;
     }
 
     ctx = shm_zone->data;
@@ -4066,7 +4066,7 @@ ngx_http_lua_shdict_api_zcard_locked(ngx_shm_zone_t *shm_zone,
 
     if (rc == NGX_DECLINED || rc == NGX_DONE) {
 
-    	*len = 0;
+        *len = 0;
         return NGX_LUA_SHDICT_NOT_FOUND;
     }
 
@@ -4086,7 +4086,7 @@ ngx_int_t
 ngx_http_lua_shdict_api_zcard(ngx_shm_zone_t *shm_zone,
     ngx_str_t key, uint32_t *len)
 {
-	ngx_int_t                  rc;
+    ngx_int_t                  rc;
     ngx_http_lua_shdict_ctx_t *ctx = shm_zone->data;
 
     ngx_shmtx_lock(&ctx->shpool->mutex);
@@ -4116,8 +4116,8 @@ ngx_http_lua_shdict_zcard(lua_State *L)
     case NGX_LUA_SHDICT_OK:
     case NGX_LUA_SHDICT_NOT_FOUND:
 
-    	lua_pushinteger(L, len);
-    	return 1;
+        lua_pushinteger(L, len);
+        return 1;
 
     case NGX_LUA_SHDICT_BAD_VALUE_TYPE:
 
@@ -4127,8 +4127,8 @@ ngx_http_lua_shdict_zcard(lua_State *L)
 
     default:
 
-    	/* unreachable */
-    	break;
+        /* unreachable */
+        break;
     }
 
     return luaL_error(L, "unexpected");
