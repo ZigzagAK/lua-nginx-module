@@ -239,6 +239,11 @@ ngx_http_lua_raw_to_value(ngx_str_t raw, uint8_t value_type)
         value.value.b = raw.data[0];
         break;
 
+    case SHDICT_TNULL:
+
+    	ngx_str_null(&value.value.s);
+    	break;
+
     default:
 
         value.valid = 0;
@@ -259,40 +264,56 @@ ngx_http_lua_get_value(lua_State *L, int index)
         .valid = 1
     };
 
-    value.type = lua_type(L, index);
+    switch (lua_type(L, index)) {
 
-    switch (value.type) {
-
-    case SHDICT_TSTRING:
+    case LUA_TSTRING:
 
         value.value.s.data = (u_char *) lua_tolstring(L, index,
             &value.value.s.len);
-        break;
-
-    case SHDICT_TNUMBER:
-
-        value.value.n = lua_tonumber(L, index);
-        break;
-
-    case SHDICT_TBOOLEAN:
-
-        value.value.b = lua_toboolean(L, index);
-        break;
-
-    case SHDICT_TUSERDATA:
-
-        value.value.s = ngx_http_lua_get_string(L, index);
         value.type = SHDICT_TSTRING;
         break;
 
-    case SHDICT_TNIL:
+    case LUA_TNUMBER:
+
+        value.value.n = lua_tonumber(L, index);
+        value.type = SHDICT_TNUMBER;
+        break;
+
+    case LUA_TBOOLEAN:
+
+        value.value.b = lua_toboolean(L, index);
+        value.type = SHDICT_TBOOLEAN;
+        break;
+
+    case LUA_TLIGHTUSERDATA:
+
+    	if (lua_touserdata(L, index) == NULL) {
+
+    		/* ngx.null */
+    		value.type = SHDICT_TNULL;
+            break;
+    	} else {
+
+    		value.type = SHDICT_TNIL;
+    		value.valid = 0;
+    	}
+
+        break;
+
+    case LUA_TUSERDATA:
+
+    	value.value.s = ngx_http_lua_get_string(L, index);
+        value.type = SHDICT_TSTRING;
+
+        break;
+
+    case LUA_TNIL:
 
         ngx_memzero(&value.value, sizeof(value.value));
         break;
 
     default:
 
-        value.type = SHDICT_TNIL;
         value.valid = 0;
     }
 
@@ -346,6 +367,7 @@ ngx_http_lua_shdict_copy_value(ngx_http_lua_value_t *value,
         break;
 
     case SHDICT_TNIL:
+    case SHDICT_TNULL:
 
         ngx_memzero(&value->value, sizeof(value->value));
         break;
@@ -356,6 +378,48 @@ ngx_http_lua_shdict_copy_value(ngx_http_lua_value_t *value,
     }
 
     return NGX_LUA_SHDICT_OK;
+}
+
+
+static void
+ngx_http_lua_shdict_value_push(lua_State *L,
+    ngx_http_lua_value_t *value)
+{
+    if (value->valid) {
+
+		switch (value->type) {
+
+		case SHDICT_TSTRING:
+
+			lua_pushlstring(L, (char *) value->value.s.data,
+				value->value.s.len);
+			break;
+
+		case SHDICT_TNUMBER:
+
+			lua_pushnumber(L, value->value.n);
+			break;
+
+		case SHDICT_TBOOLEAN:
+
+			lua_pushboolean(L, value->value.b);
+			break;
+
+		case SHDICT_TNIL:
+
+			lua_pushnil(L);
+			break;
+
+		case SHDICT_TNULL:
+
+			lua_pushlightuserdata(L, NULL);
+			break;
+
+		}
+	} else {
+
+		lua_pushnil(L);
+	}
 }
 
 
@@ -426,6 +490,7 @@ ngx_http_lua_shdict_zset_znode_value_get(ngx_http_lua_shdict_zset_node_t *zset_n
             break;
 
         case SHDICT_TNIL:
+        case SHDICT_TNULL:
 
             break;
 
@@ -446,30 +511,16 @@ static ngx_inline void
 ngx_http_lua_shdict_zset_znode_value_push(lua_State *L,
     ngx_http_lua_shdict_zset_node_t *zset_node)
 {
+	ngx_http_lua_value_t value;
+
     if (zset_node->value.data) {
 
-        switch (zset_node->value_type) {
-
-        case SHDICT_TSTRING:
-
-            lua_pushlstring(L, (char *) zset_node->value.data,
-                            zset_node->value.len);
-            break;
-
-        case SHDICT_TNUMBER:
-
-            lua_pushnumber(L, *(lua_Number *) zset_node->value.data);
-            break;
-
-        case SHDICT_TBOOLEAN:
-
-            lua_pushboolean(L, zset_node->value.data[0]);
-            break;
-
-        }
+    	value = ngx_http_lua_raw_to_value(zset_node->value,
+    			                          zset_node->value_type);
+    	ngx_http_lua_shdict_value_push(L, &value);
     } else {
 
-        lua_pushlightuserdata(L, NULL);
+        lua_pushnil(L);
     }
 }
 
@@ -1110,31 +1161,14 @@ ngx_http_lua_shdict_api_fun_helper(ngx_shm_zone_t *shm_zone,
 
             value.value.s.len = len;
             value.value.s.data = data;
-
             break;
 
         case SHDICT_TNUMBER:
-
-            if (len != sizeof(lua_Number)) {
-                err_handler(userctx, "bad lua number "
-                            "value size found for key %*s: %lu", key.len,
-                            key.data, (unsigned long) len);
-
-                return NGX_LUA_SHDICT_ERROR;
-            }
 
             value.value.n = *(lua_Number *) data;
             break;
 
         case SHDICT_TBOOLEAN:
-
-            if (len != sizeof(u_char)) {
-                err_handler(userctx, "bad lua boolean "
-                            "value size found for key %*s: %lu", key.len,
-                            key.data, (unsigned long) len);
-
-                return NGX_LUA_SHDICT_ERROR;
-            }
 
             value.value.b = data[0];
             break;
@@ -1143,6 +1177,11 @@ ngx_http_lua_shdict_api_fun_helper(ngx_shm_zone_t *shm_zone,
         case SHDICT_TZSET:
             ngx_str_null(&value.value.s);
             break;
+
+        case SHDICT_TNULL:
+
+        	ngx_memzero(&value.value, sizeof(value.value));
+        	break;
 
         default:
             err_handler(userctx, "bad lua value type "
@@ -1224,6 +1263,11 @@ ngx_http_lua_shdict_api_fun_helper(ngx_shm_zone_t *shm_zone,
         ngx_http_lua_shdict_rbtree_delete_node(ctx, sd);
         break;
 
+    case SHDICT_TNULL:
+
+    	ngx_memzero(&value.value, sizeof(value.value));
+    	break;
+
     case SHDICT_TSTRING:
     case SHDICT_TUSERDATA:
 
@@ -1276,55 +1320,40 @@ typedef struct {
     u_char err[NGX_MAX_ERROR_STR];
     lua_State *L;
     int get_stale;
-} lua_shdict_get_helper_getter_ctx_t;
+    int index;
+} ngx_lua_shdict_userctx_t;
 
 
 static ngx_int_t
 ngx_http_lua_shdict_get_helper_push_value(ngx_http_lua_value_t *value,
     int stale, void *userctx)
 {
-    lua_shdict_get_helper_getter_ctx_t *ctx = userctx;
-    lua_State                          *L = ctx->L;
+    ngx_lua_shdict_userctx_t *ctx = userctx;
+    lua_State                *L = ctx->L;
 
     switch (value->type) {
-
-    case SHDICT_TSTRING:
-
-        lua_pushlstring(L, (char *) value->value.s.data, value->value.s.len);
-        break;
-
-    case SHDICT_TNUMBER:
-
-        lua_pushnumber(L, value->value.n);
-        break;
-
-    case SHDICT_TBOOLEAN:
-
-        lua_pushboolean(L, value->value.b);
-        break;
 
     case SHDICT_TLIST:
 
         lua_pushnil(L);
         lua_pushliteral(L, "value is a list");
-        return NGX_LUA_SHDICT_OK;
+        break;
 
     case SHDICT_TZSET:
 
         lua_pushnil(L);
         lua_pushliteral(L, "value is a zset");
-        return NGX_LUA_SHDICT_OK;
+        break;
 
     case SHDICT_TUSERDATA:
 
         lua_pushnil(L);
-        lua_pushliteral(L, "value is a native userdata");
-        return NGX_LUA_SHDICT_OK;
+        lua_pushliteral(L, "value is an userdata");
+        break;
 
     default:
 
-        /* unreachable */
-        return NGX_LUA_SHDICT_ERROR;
+        ngx_http_lua_shdict_value_push(L, value);
     }
 
     if (ctx->get_stale) {
@@ -1352,7 +1381,7 @@ ngx_http_lua_shdict_get_helper_push_value(ngx_http_lua_value_t *value,
 static void
 ngx_http_lua_shdict_get_helper_err_handler(void *userctx, const char *fmt, ...)
 {
-    lua_shdict_get_helper_getter_ctx_t *ctx = userctx;
+    ngx_lua_shdict_userctx_t *ctx = userctx;
     va_list args;
     va_start(args, fmt);
     ngx_vslprintf(ctx->err, ctx->err + NGX_MAX_ERROR_STR, fmt, args);
@@ -1363,11 +1392,11 @@ ngx_http_lua_shdict_get_helper_err_handler(void *userctx, const char *fmt, ...)
 static int
 ngx_http_lua_shdict_get_helper(lua_State *L, int get_stale)
 {
-    int                                n = lua_gettop(L);
-    ngx_int_t                          rc;
-    ngx_http_lua_shdict_ctx_t         *ctx;
-    ngx_shm_zone_t                    *shm_zone;
-    lua_shdict_get_helper_getter_ctx_t userctx = {
+    ngx_int_t                  rc;
+    ngx_http_lua_shdict_ctx_t *ctx;
+    ngx_shm_zone_t            *shm_zone;
+    int                        n = lua_gettop(L);
+    ngx_lua_shdict_userctx_t   userctx = {
         .L = L, .get_stale = get_stale
     };
 
@@ -1780,6 +1809,11 @@ ngx_http_lua_shdict_api_set_helper(ngx_shm_zone_t *shm_zone,
         val.data = &c;
         break;
 
+    case SHDICT_TNULL:
+
+    	ngx_str_null(&val);
+    	break;
+
     default:
 
         return NGX_LUA_SHDICT_BAD_VALUE_TYPE;
@@ -1808,6 +1842,8 @@ ngx_http_lua_shared_dict_get_getter(ngx_http_lua_value_t *src,
     case SHDICT_TNUMBER:
     case SHDICT_TBOOLEAN:
     case SHDICT_TUSERDATA:
+    case SHDICT_TNULL:
+    case SHDICT_TNIL:
 
         ctx->value = *src;
         break;
@@ -2769,6 +2805,11 @@ ngx_http_lua_shdict_pop_helper(ngx_shm_zone_t *shm_zone,
         value->value.b = data[0];
         break;
 
+    case SHDICT_TNULL:
+
+    	ngx_memzero(&value->value, sizeof(value->value));
+    	break;
+
     default:
 
         /* is not possible because length was checked in push */
@@ -2780,6 +2821,8 @@ ngx_http_lua_shdict_pop_helper(ngx_shm_zone_t *shm_zone,
 
         ngx_abort();
     }
+
+    value->valid = 1;
 
     ngx_queue_remove(queue);
 
@@ -2888,34 +2931,7 @@ ngx_http_lua_shdict_lua_pop_helper(lua_State *L, int flags)
     switch (rc) {
     case NGX_LUA_SHDICT_OK:
 
-        switch (value.type) {
-        case SHDICT_TSTRING:
-
-            lua_pushlstring(L, (const char *) value.value.s.data,
-                value.value.s.len);
-            break;
-
-        case SHDICT_TNUMBER:
-
-            lua_pushnumber(L, value.value.n);
-            break;
-
-        case SHDICT_TBOOLEAN:
-
-            lua_pushboolean(L, value.value.b);
-            break;
-
-        case SHDICT_TUSERDATA:
-
-            lua_pushliteral(L, "SHDICT_TUSERDATA");
-            break;
-
-        default:
-
-            /* unreachable */
-            break;
-        }
-
+    	ngx_http_lua_shdict_value_push(L, &value);
         return 1;
 
     case NGX_LUA_SHDICT_NOT_FOUND:
@@ -3056,39 +3072,23 @@ static ngx_int_t
 ngx_http_lua_shdict_fun_pcall(ngx_http_lua_value_t *value,
    int stale, void *userctx)
 {
-    lua_shdict_get_helper_getter_ctx_t *ctx = userctx;
-    lua_State                          *L = ctx->L;
+    ngx_lua_shdict_userctx_t *ctx = userctx;
+    lua_State                *L = ctx->L;
 
     /* push lua clojure */
-    lua_pushvalue(L, 3);
+    lua_pushvalue(L, ctx->index);
 
     /* push value */
     switch (value->type) {
 
     case SHDICT_TNIL:
-
-        lua_pushnil(L);
-        break;
-
     case SHDICT_TSTRING:
-
-        lua_pushlstring(L, (char *) value->value.s.data, value->value.s.len);
-        break;
-
     case SHDICT_TNUMBER:
-
-        lua_pushnumber(L, value->value.n);
-        break;
-
     case SHDICT_TBOOLEAN:
+    case SHDICT_TNULL:
 
-        lua_pushboolean(L, value->value.b);
-        break;
-
-    case SHDICT_TUSERDATA:
-
-        lua_pushliteral(L, "SHDICT_TUSERDATA");
-        break;
+    	ngx_http_lua_shdict_value_push(L, value);
+    	break;
 
     default:
 
@@ -3114,20 +3114,29 @@ ngx_http_lua_shdict_fun_pcall(ngx_http_lua_value_t *value,
     switch (value->type) {
 
     case SHDICT_TSTRING:
-        value->value.s.data = (u_char *) lua_tolstring(L, -2, &value->value.s.len);
+
+    	value->value.s.data = (u_char *) lua_tolstring(L, -2, &value->value.s.len);
         break;
 
     case SHDICT_TNUMBER:
-        value->value.n = lua_tonumber(L, -2);
+
+    	value->value.n = lua_tonumber(L, -2);
         break;
 
     case SHDICT_TBOOLEAN:
-        value->value.b = lua_toboolean(L, -2);
+
+    	value->value.b = lua_toboolean(L, -2);
         break;
 
     case SHDICT_TNIL:
-        ngx_str_null(&value->value.s);
+
+    	ngx_str_null(&value->value.s);
         break;
+
+    case SHDICT_TNULL:
+
+    	ngx_memzero(&value->value, sizeof(value->value));
+    	break;
 
     default:
 
@@ -3144,14 +3153,13 @@ ngx_http_lua_shdict_fun_pcall(ngx_http_lua_value_t *value,
 static int
 ngx_http_lua_shdict_fun(lua_State *L)
 {
-    ngx_int_t                    rc;
-    ngx_http_lua_shdict_ctx_t   *ctx;
-    lua_Number                   exptime = 0;
-    ngx_shm_zone_t              *shm_zone;
-    int                          n = lua_gettop(L);
-
-    lua_shdict_get_helper_getter_ctx_t userctx = {
-        .L = L, .get_stale = 0
+    ngx_int_t                  rc;
+    ngx_http_lua_shdict_ctx_t *ctx;
+    lua_Number                 exptime = 0;
+    ngx_shm_zone_t            *shm_zone;
+    int                        n = lua_gettop(L);
+    ngx_lua_shdict_userctx_t   userctx = {
+        .L = L, .get_stale = 0, .index = 3
     };
 
     userctx.err[0] = 0;
@@ -3498,8 +3506,8 @@ ngx_http_lua_shdict_api_zset_helper(ngx_shm_zone_t *shm_zone,
     ngx_rbtree_node_t               *node = NULL;
     ngx_rbtree_node_t               *znode = NULL;
     ngx_rbtree_node_t               *sentinel;
-    ngx_http_lua_shdict_zset_t      *zset;
-    ngx_http_lua_shdict_zset_node_t *zset_node;
+    ngx_http_lua_shdict_zset_t      *zset = NULL;
+    ngx_http_lua_shdict_zset_node_t *zset_node = NULL;
     u_char                           exists = 0;
 
     ctx = shm_zone->data;
@@ -3546,9 +3554,6 @@ ngx_http_lua_shdict_api_zset_helper(ngx_shm_zone_t *shm_zone,
 
         sd->value_len = 0;
 
-        ngx_queue_remove(&sd->queue);
-        ngx_queue_insert_head(&ctx->sh->lru_queue, &sd->queue);
-
         dd("go to add_node");
         goto add_node;
     }
@@ -3558,13 +3563,11 @@ ngx_http_lua_shdict_api_zset_helper(ngx_shm_zone_t *shm_zone,
     if (rc == NGX_OK) {
 
         if (sd->value_type != SHDICT_TZSET) {
+
             return NGX_LUA_SHDICT_BAD_VALUE_TYPE;
         }
 
         zset = ngx_http_lua_shdict_zset_get(sd, key.len);
-
-        ngx_queue_remove(&sd->queue);
-        ngx_queue_insert_head(&ctx->sh->lru_queue, &sd->queue);
 
         dd("go to add_node");
         goto add_node;
@@ -3622,6 +3625,11 @@ init_zset:
 
 add_node:
 
+    /* touch LRU queue */
+
+    ngx_queue_remove(&sd->queue);
+    ngx_queue_insert_head(&ctx->sh->lru_queue, &sd->queue);
+
     /* search first */
 
     znode = zset->rbtree.root;
@@ -3656,7 +3664,7 @@ add_node:
         break;
     }
 
-    if (exists == 0) {
+    if (!exists) {
 
         ngx_log_debug0(NGX_LOG_DEBUG_HTTP, ctx->log, 0,
                        "lua shared dict zset: creating a new zset node");
@@ -3676,16 +3684,8 @@ add_node:
 
         if (znode == NULL) {
 
-            if (node != NULL && sd->value_len == 0) {
-
-                ngx_rbtree_delete(&ctx->sh->rbtree, node);
-
-                ngx_queue_remove(&sd->queue);
-
-                ngx_slab_free_locked(ctx->shpool, node);
-            }
-
-            return NGX_LUA_SHDICT_NO_MEMORY;
+        	rc = NGX_LUA_SHDICT_NO_MEMORY;
+        	goto check;
         }
     }
 
@@ -3698,21 +3698,14 @@ add_node:
         if (fun(ngx_http_lua_raw_to_value(old_value, zset_node->value_type),
                 &value, userctx) != NGX_LUA_SHDICT_OK) {
 
-            if (exists == 0) {
-                /* not replaced */
-                ngx_slab_free_locked(ctx->shpool, znode);
-            }
+            rc = NGX_LUA_SHDICT_ERROR;
+            goto delete_znode;
+        }
 
-            if (node != NULL && sd->value_len == 0) {
+        if (!value.valid) {
 
-                ngx_rbtree_delete(&ctx->sh->rbtree, node);
-
-                ngx_queue_remove(&sd->queue);
-
-                ngx_slab_free_locked(ctx->shpool, node);
-            }
-
-            return NGX_LUA_SHDICT_ERROR;
+        	rc = NGX_LUA_SHDICT_OK;
+        	goto delete_znode;
         }
     }
 
@@ -3729,28 +3722,15 @@ add_node:
 
         if (zset_node->value.data == NULL) {
 
-            if (exists == 0) {
-                /* not replaced */
-                ngx_slab_free_locked(ctx->shpool, znode);
-            }
-
-            if (node != NULL && sd->value_len == 0) {
-
-                ngx_rbtree_delete(&ctx->sh->rbtree, node);
-
-                ngx_queue_remove(&sd->queue);
-
-                ngx_slab_free_locked(ctx->shpool, node);
-            }
-
-            return NGX_LUA_SHDICT_NO_MEMORY;
+        	rc = NGX_LUA_SHDICT_NO_MEMORY;
+        	goto delete_znode;
         }
 
         ngx_memcpy(zset_node->value.data, raw_value.data, raw_value.len);
     } else {
 
         ngx_str_null(&zset_node->value);
-        zset_node->value_type = 0;
+        zset_node->value_type = SHDICT_TNIL;
     }
 
     if (old_value.data) {
@@ -3758,8 +3738,9 @@ add_node:
         ngx_slab_free_locked(ctx->shpool, old_value.data);
     }
 
-    if (exists == 0) {
-        sd->value_len = sd->value_len + 1;
+    if (!exists) {
+
+    	sd->value_len = sd->value_len + 1;
         dd("setting zset length to %d", sd->value_len);
 
         ngx_memcpy(zset_node->data, zkey.data, zkey.len);
@@ -3768,11 +3749,47 @@ add_node:
         ngx_rbtree_insert(&zset->rbtree, znode);
     }
 
-    if (len) {
-        *len = sd->value_len;
-    }
+   	if (len) {
+
+   		*len = sd->value_len;
+   	}
 
     return NGX_LUA_SHDICT_OK;
+
+delete_znode:
+
+    if (znode != NULL) {
+
+		if (exists) {
+
+			ngx_rbtree_delete(&zset->rbtree, znode);
+			sd->value_len = sd->value_len - 1;
+		}
+
+		zset_node = (ngx_http_lua_shdict_zset_node_t *) &znode->color;
+
+		if (zset_node->value.data != NULL) {
+
+			ngx_slab_free_locked(ctx->shpool, zset_node->value.data);
+		}
+
+		ngx_slab_free_locked(ctx->shpool, znode);
+    }
+
+check:
+
+   	if (len) {
+
+   		*len = sd->value_len;
+   	}
+
+	if (sd->value_len == 0) {
+
+		/* delete shdict key */
+		ngx_http_lua_shdict_rbtree_delete_node(ctx, sd);
+    }
+
+	return rc;
 }
 
 
@@ -3835,44 +3852,17 @@ ngx_http_lua_shdict_api_zadd(ngx_shm_zone_t *shm_zone,
 
 
 static ngx_int_t
-ngx_http_lua_shdict_zset_helper_val(ngx_http_lua_value_t old,
+ngx_http_lua_shdict_newval(ngx_http_lua_value_t old,
     ngx_http_lua_value_t *value, void *userctx)
 {
-    lua_shdict_get_helper_getter_ctx_t *ctx = userctx;
-    lua_State                          *L = ctx->L;
+    ngx_lua_shdict_userctx_t *ctx = userctx;
+    lua_State                *L = ctx->L;
 
     /* callback */
-    lua_pushvalue(L, 4);
+    lua_pushvalue(L, ctx->index);
 
-    if (old.valid) {
-
-        switch (old.type) {
-
-        case SHDICT_TSTRING:
-
-            lua_pushlstring(L, (char *) old.value.s.data,
-                            old.value.s.len);
-            break;
-
-        case SHDICT_TNUMBER:
-
-            lua_pushnumber(L, old.value.n);
-            break;
-
-        case SHDICT_TBOOLEAN:
-
-            lua_pushboolean(L, old.value.b);
-            break;
-
-        case SHDICT_TNIL:
-
-            lua_pushnil(L);
-
-        }
-    } else {
-
-        lua_pushnil(L);
-    }
+    /* push old value */
+    ngx_http_lua_shdict_value_push(L, &old);
 
     if (lua_pcall(L, 1, 1, 0) != 0) {
 
@@ -3883,6 +3873,11 @@ ngx_http_lua_shdict_zset_helper_val(ngx_http_lua_value_t old,
 
     *value = ngx_http_lua_get_value(L, -1);
 
+    if (value->type == SHDICT_TNIL) {
+
+    	value->valid = 0;
+    }
+
     return NGX_LUA_SHDICT_OK;
 }
 
@@ -3890,17 +3885,17 @@ ngx_http_lua_shdict_zset_helper_val(ngx_http_lua_value_t old,
 static int
 ngx_http_lua_shdict_zset_helper(lua_State *L, int flags)
 {
-    ngx_http_lua_value_t               value;
-    ngx_shm_zone_t                    *shm_zone;
-    ngx_http_lua_shdict_ctx_t         *ctx;
-    ngx_str_t                          zkey;
-    lua_Number                         exptime = 0;
-    uint32_t                           len = 0;
-    ngx_int_t                          rc;
-    zset_helper_t                      fun = NULL;
-    int                                n = lua_gettop(L);
-    lua_shdict_get_helper_getter_ctx_t userctx = {
-        .L = L, .get_stale = 0
+    ngx_http_lua_value_t        value;
+    ngx_shm_zone_t             *shm_zone;
+    ngx_http_lua_shdict_ctx_t  *ctx;
+    ngx_str_t                   zkey;
+    lua_Number                  exptime = 0;
+    uint32_t                    len = 0;
+    ngx_int_t                   rc;
+    zset_helper_t               fun = NULL;
+    int                         n = lua_gettop(L);
+    ngx_lua_shdict_userctx_t    userctx = {
+        .L = L, .get_stale = 0, .index = 4
     };
 
     userctx.err[0] = 0;
@@ -3927,7 +3922,7 @@ ngx_http_lua_shdict_zset_helper(lua_State *L, int flags)
             }
         } else {
 
-            fun = ngx_http_lua_shdict_zset_helper_val;
+            fun = ngx_http_lua_shdict_newval;
         }
 
         if (n == 5 && !lua_isnil(L, 5)) {
@@ -4404,37 +4399,7 @@ ngx_http_lua_shdict_zget(lua_State *L)
     case NGX_LUA_SHDICT_OK:
 
         lua_pushlstring(L, (char *) zkey.data,  zkey.len);
-
-        if (value.valid) {
-
-            switch (value.type) {
-
-            case SHDICT_TSTRING:
-
-                lua_pushlstring(L, (char *) value.value.s.data,
-                    value.value.s.len);
-                break;
-
-            case SHDICT_TNUMBER:
-
-                lua_pushnumber(L, value.value.n);
-                break;
-
-            case SHDICT_TBOOLEAN:
-
-                lua_pushboolean(L, value.value.b);
-                break;
-
-            case SHDICT_TNIL:
-
-                lua_pushlightuserdata(L, NULL);
-
-            }
-        } else {
-
-            lua_pushlightuserdata(L, NULL);
-        }
-
+        ngx_http_lua_shdict_value_push(L, &value);
         break;
 
     case NGX_LUA_SHDICT_NOT_FOUND:
@@ -4562,7 +4527,7 @@ ngx_http_lua_shdict_api_zscan_locked(ngx_shm_zone_t *shm_zone,
     ngx_http_lua_shdict_zset_node_t    *zset_node;
     ngx_str_t                           zkey;
     ngx_http_lua_value_t                value;
-    lua_shdict_get_helper_getter_ctx_t *ctx = userctx;
+    ngx_lua_shdict_userctx_t          *ctx = userctx;
 
     ctx->err[0] = 0;
 
@@ -4674,13 +4639,13 @@ ngx_int_t
 ngx_http_lua_shdict_zscan_getter(ngx_str_t zkey, ngx_http_lua_value_t *value,
     void *userctx)
 {
-    lua_shdict_get_helper_getter_ctx_t *ctx = userctx;
-    lua_State                          *L = ctx->L;
-    u_char                             *err_msg;
-    int                                 b;
-    int                                 n = lua_gettop(L);
+    ngx_lua_shdict_userctx_t *ctx = userctx;
+    lua_State                *L = ctx->L;
+    u_char                   *err_msg;
+    int                       b;
+    int                       n = lua_gettop(L);
 
-    lua_pushvalue(L, 3);
+    lua_pushvalue(L, ctx->index);
 
     /* push zkey */
     lua_pushlstring(L, (char *) zkey.data, zkey.len);
@@ -4690,7 +4655,7 @@ ngx_http_lua_shdict_zscan_getter(ngx_str_t zkey, ngx_http_lua_value_t *value,
 
     if (lua_pcall(L, lua_gettop(L) - n - 1, 1, 0) == 0) {
 
-        b = 0;
+        b = lua_toboolean(L, -1);
     } else {
 
         /*  error occurred when calling user code */
@@ -4716,14 +4681,14 @@ ngx_http_lua_shdict_zscan_getter(ngx_str_t zkey, ngx_http_lua_value_t *value,
 static int
 ngx_http_lua_shdict_zscan(lua_State *L)
 {
-    ngx_int_t                          rc;
-    ngx_http_lua_shdict_ctx_t         *ctx;
-    ngx_shm_zone_t                    *shm_zone;
-    ngx_str_t                          key;
-    ngx_str_t                          lbound;
-    int                                n = lua_gettop(L);
-    lua_shdict_get_helper_getter_ctx_t userctx = {
-        .L = L, .get_stale = 0
+    ngx_int_t                   rc;
+    ngx_http_lua_shdict_ctx_t  *ctx;
+    ngx_shm_zone_t             *shm_zone;
+    ngx_str_t                   key;
+    ngx_str_t                   lbound;
+    int                         n = lua_gettop(L);
+    ngx_lua_shdict_userctx_t    userctx = {
+        .L = L, .get_stale = 0, .index = 3
     };
 
     if (ngx_http_lua_shdict_check_required(L, &shm_zone, &key, 3, 4) != NGX_OK) {
@@ -4867,7 +4832,7 @@ ngx_http_lua_ffi_shdict_store(ngx_shm_zone_t *zone, int op, u_char *key,
         str_value_len = sizeof(u_char);
         break;
 
-    case LUA_TNIL:
+    case SHDICT_TNIL:
         if (op & (NGX_HTTP_LUA_SHDICT_ADD|NGX_HTTP_LUA_SHDICT_REPLACE)) {
             *errmsg = "attempt to add or replace nil values";
             return NGX_ERROR;

@@ -23,13 +23,14 @@
 
 
 enum {
-    SHDICT_TNIL      = 0,   /* same as LUA_TNIL      */
-    SHDICT_TBOOLEAN  = 1,   /* same as LUA_TBOOLEAN  */
-    SHDICT_TNUMBER   = 3,   /* same as LUA_TNUMBER   */
-    SHDICT_TSTRING   = 4,   /* same as LUA_TSTRING   */
+    SHDICT_TNIL      = LUA_TNIL,
+    SHDICT_TBOOLEAN  = LUA_TBOOLEAN,
+    SHDICT_TNUMBER   = LUA_TNUMBER,
+    SHDICT_TSTRING   = LUA_TSTRING,
     SHDICT_TLIST     = 5,
     SHDICT_TZSET     = 6,
-    SHDICT_TUSERDATA = 7    /* same as LUA_TUSERDATA */
+    SHDICT_TUSERDATA = LUA_TUSERDATA,
+    SHDICT_TNULL     = LUA_TLIGHTUSERDATA
 };
 
 
