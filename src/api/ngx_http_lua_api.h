@@ -1,6 +1,9 @@
 
 /*
  * Copyright (C) Yichun Zhang (agentzh)
+ * Aleksey Konovkin (ZigzagAK) full refactoring non-ffi LUA API,
+ * add zset operations, function callbacks,
+ * Public C interface to shared dictionary.
  */
 
 
