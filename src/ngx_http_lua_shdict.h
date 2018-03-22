@@ -35,6 +35,7 @@ typedef struct {
     u_char                       color;
     uint8_t                      value_type;
     ngx_str_t                    value;
+    void                        *free;
     u_char                       data[1];
 } ngx_http_lua_shdict_zset_node_t;
 
