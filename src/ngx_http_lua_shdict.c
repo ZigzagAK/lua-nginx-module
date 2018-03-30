@@ -2407,6 +2407,64 @@ ngx_http_lua_shared_dict_get(ngx_shm_zone_t *zone, u_char *key_data,
 }
 
 
+extern char *
+ngx_http_lua_shared_dict(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
+
+
+ngx_shm_zone_t *
+ngx_http_lua_add_shared_dict(ngx_conf_t *cf,
+    ngx_str_t name, ngx_str_t size)
+{
+    ngx_conf_t               *conf;
+    ngx_str_t                *val;
+    ngx_http_lua_main_conf_t *lmcf;
+    ngx_command_t             null_cmd = ngx_null_command;
+
+    lmcf = ngx_http_conf_get_module_main_conf(cf, ngx_http_lua_module);
+
+    conf = ngx_pcalloc(cf->pool, sizeof(ngx_conf_t));
+    if (conf == NULL) {
+        ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "no memory");
+        return NULL;
+    }
+
+    ngx_memcpy(conf, cf, sizeof(ngx_conf_t));
+
+    conf->args = ngx_array_create(cf->pool, 3, sizeof(ngx_str_t));
+    if (conf->args == NULL) {
+        ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "no memory");
+        return NULL;
+    }
+
+    val = conf->args->elts;
+
+    ngx_str_set(&val[0], "lua_shared_dict");
+
+    val[1].len = name.len;
+    val[2].len = size.len;
+
+    val[1].data = ngx_pcalloc(cf->pool, name.len + 1);
+    val[2].data = ngx_pcalloc(cf->pool, size.len + 1);
+
+    if (val[1].data == NULL || val[2].data == NULL) {
+        ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "no memory");
+        return NULL;
+    }
+
+    ngx_memcpy(val[1].data, name.data, name.len);
+    ngx_memcpy(val[2].data, size.data, size.len);
+
+    if (ngx_http_lua_shared_dict(conf, &null_cmd, lmcf) == NGX_CONF_ERROR) {
+        ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "failed to add \"lua_shared_dict %V %V\"",
+                           name, size);
+        return NULL;
+    }
+
+    return ((ngx_shm_zone_t **)
+        lmcf->shdict_zones->elts)[lmcf->shdict_zones->nelts - 1];
+}
+
+
 static ngx_int_t
 ngx_http_lua_shdict_push_helper(ngx_shm_zone_t *shm_zone,
     ngx_str_t key, ngx_http_lua_value_t value, int flags, uint32_t *len)
@@ -4548,7 +4606,7 @@ ngx_http_lua_shdict_zgetall(lua_State *L)
 
 ngx_int_t
 ngx_http_lua_shdict_api_zscan_locked(ngx_shm_zone_t *shm_zone,
-    ngx_str_t key, fun_t fun, ngx_str_t lbound, void *userctx)
+    ngx_str_t key, ngx_http_fun_t fun, ngx_str_t lbound, void *userctx)
 {
     uint32_t                            hash;
     ngx_int_t                           rc;
@@ -4560,9 +4618,6 @@ ngx_http_lua_shdict_api_zscan_locked(ngx_shm_zone_t *shm_zone,
     ngx_http_lua_shdict_zset_node_t    *zset_node;
     ngx_str_t                           zkey;
     ngx_http_lua_value_t                value;
-    ngx_lua_shdict_userctx_t          *ctx = userctx;
-
-    ctx->err[0] = 0;
 
     hash = ngx_crc32_short(key.data, key.len);
 
@@ -4632,14 +4687,19 @@ ngx_http_lua_shdict_api_zscan_locked(ngx_shm_zone_t *shm_zone,
 
                 value = ngx_http_lua_shdict_zset_znode_value_get(zset_node);
 
-                if (fun(zkey, &value, userctx)) {
+                rc = fun(zkey, &value, userctx);
 
-                    if (ctx->err[0]) {
+                if (rc != NGX_LUA_SHDICT_OK) {
+
+                    if (rc == NGX_LUA_SHDICT_ZSCAN_STOP) {
+
+                        break;
+                    }
+
+                    if (rc == NGX_LUA_SHDICT_ERROR) {
 
                         return NGX_LUA_SHDICT_ERROR;
                     }
-
-                    break;
                 }
             }
         }
@@ -4651,7 +4711,7 @@ ngx_http_lua_shdict_api_zscan_locked(ngx_shm_zone_t *shm_zone,
 
 ngx_int_t
 ngx_http_lua_shdict_api_zscan(ngx_shm_zone_t *shm_zone,
-    ngx_str_t key, fun_t fun, ngx_str_t lbound, void *userctx)
+    ngx_str_t key, ngx_http_fun_t fun, ngx_str_t lbound, void *userctx)
 {
     ngx_int_t                  rc;
     ngx_http_lua_shdict_ctx_t *ctx = shm_zone->data;

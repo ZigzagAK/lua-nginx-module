@@ -25,16 +25,18 @@
 #define ngx_http_lua_version  10012
 
 
-enum {
-    SHDICT_TNIL      = LUA_TNIL,
-    SHDICT_TBOOLEAN  = LUA_TBOOLEAN,
-    SHDICT_TNUMBER   = LUA_TNUMBER,
-    SHDICT_TSTRING   = LUA_TSTRING,
-    SHDICT_TLIST     = 5,
-    SHDICT_TZSET     = 6,
-    SHDICT_TUSERDATA = LUA_TUSERDATA,
-    SHDICT_TNULL     = LUA_TLIGHTUSERDATA
-};
+#ifndef SHDICT_TNIL
+
+#define SHDICT_TNIL      (LUA_TNIL)
+#define SHDICT_TBOOLEAN  (LUA_TBOOLEAN)
+#define SHDICT_TNUMBER   (LUA_TNUMBER)
+#define SHDICT_TSTRING   (LUA_TSTRING)
+#define SHDICT_TLIST     (5)
+#define SHDICT_TZSET     (6)
+#define SHDICT_TUSERDATA (LUA_TUSERDATA)
+#define SHDICT_TNULL     (LUA_TLIGHTUSERDATA)
+
+#endif
 
 
 typedef struct {
@@ -50,8 +52,9 @@ typedef struct {
 } ngx_http_lua_value_t;
 
 
+#ifndef MAX_SHDICT_QUEUE_VALUE_SIZE
 #define MAX_SHDICT_QUEUE_VALUE_SIZE (32768)
-
+#endif
 
 lua_State *ngx_http_lua_get_global_state(ngx_conf_t *cf);
 
@@ -59,6 +62,10 @@ ngx_http_request_t *ngx_http_lua_get_request(lua_State *L);
 
 ngx_int_t ngx_http_lua_add_package_preload(ngx_conf_t *cf, const char *package,
     lua_CFunction func);
+
+ngx_shm_zone_t *
+ngx_http_lua_add_shared_dict(ngx_conf_t *cf,
+    ngx_str_t name, ngx_str_t size);
 
 ngx_int_t ngx_http_lua_shared_dict_get(ngx_shm_zone_t *shm_zone,
     u_char *key_data, size_t key_len, ngx_http_lua_value_t *value);
@@ -71,13 +78,17 @@ ngx_shm_zone_t *ngx_http_lua_shared_memory_add(ngx_conf_t *cf, ngx_str_t *name,
 
 /* shared dictionary api */
 
-#define NGX_LUA_SHDICT_OK             (NGX_OK)
-#define NGX_LUA_SHDICT_ERROR          (NGX_ERROR)
-#define NGX_LUA_SHDICT_NOT_FOUND      (NGX_HTTP_NOT_FOUND)
-#define NGX_LUA_SHDICT_EXISTS         (NGX_HTTP_CONFLICT)
-#define NGX_LUA_SHDICT_BAD_VALUE_TYPE (NGX_HTTP_BAD_REQUEST)
-#define NGX_LUA_SHDICT_NO_MEMORY      (NGX_HTTP_INSUFFICIENT_STORAGE)
+#ifndef NGX_LUA_SHDICT_OK
 
+#define NGX_LUA_SHDICT_OK             (NGX_OK)
+#define NGX_LUA_SHDICT_ZSCAN_STOP     (1)
+#define NGX_LUA_SHDICT_ERROR          (NGX_ERROR)
+#define NGX_LUA_SHDICT_NOT_FOUND      (NGX_DECLINED)
+#define NGX_LUA_SHDICT_EXISTS         (NGX_DONE)
+#define NGX_LUA_SHDICT_BAD_VALUE_TYPE (NGX_ABORT)
+#define NGX_LUA_SHDICT_NO_MEMORY      (NGX_BUSY)
+
+#endif
 
 void ngx_http_lua_shdict_lock(ngx_shm_zone_t *shm_zone);
 
@@ -88,11 +99,11 @@ typedef ngx_int_t (*ngx_http_lua_get_fun_t)(ngx_http_lua_value_t *value,
 
 ngx_int_t ngx_http_lua_shdict_api_fun(ngx_shm_zone_t *shm_zone,
     ngx_str_t key, ngx_http_lua_get_fun_t fun, int64_t exptime,
-	void *userctx);
+        void *userctx);
 
 ngx_int_t ngx_http_lua_shdict_api_fun_locked(ngx_shm_zone_t *shm_zone,
     ngx_str_t key, ngx_http_lua_get_fun_t fun, int64_t exptime,
-	void *userctx);
+        void *userctx);
 
 /* copying structure into value */
 ngx_int_t ngx_http_lua_shdict_api_get(ngx_shm_zone_t *shm_zone,
@@ -162,11 +173,11 @@ typedef void (*ngx_http_lua_zset_destructor_t)(void *p, size_t len);
 
 ngx_int_t ngx_http_lua_shdict_api_zset(ngx_shm_zone_t *shm_zone,
     ngx_str_t key, ngx_str_t zkey, ngx_http_lua_value_t value, int exptime,
-	ngx_http_lua_zset_destructor_t onfree);
+        ngx_http_lua_zset_destructor_t onfree);
 
 ngx_int_t ngx_http_lua_shdict_api_zset_locked(ngx_shm_zone_t *shm_zone,
     ngx_str_t key, ngx_str_t zkey, ngx_http_lua_value_t value, int exptime,
-	ngx_http_lua_zset_destructor_t onfree);
+        ngx_http_lua_zset_destructor_t onfree);
 
 /* copying structure into value */
 ngx_int_t ngx_http_lua_shdict_api_zget(ngx_shm_zone_t *shm_zone,
@@ -178,20 +189,20 @@ ngx_int_t ngx_http_lua_shdict_api_zget_locked(ngx_shm_zone_t *shm_zone,
 
 ngx_int_t ngx_http_lua_shdict_api_zadd(ngx_shm_zone_t *shm_zone,
     ngx_str_t key, ngx_str_t zkey, ngx_http_lua_value_t value, int exptime,
-	ngx_http_lua_zset_destructor_t onfree);
+        ngx_http_lua_zset_destructor_t onfree);
 
 ngx_int_t ngx_http_lua_shdict_api_zadd_locked(ngx_shm_zone_t *shm_zone,
     ngx_str_t key, ngx_str_t zkey, ngx_http_lua_value_t value, int exptime,
-	ngx_http_lua_zset_destructor_t onfree);
+        ngx_http_lua_zset_destructor_t onfree);
 
-typedef ngx_int_t (*fun_t)(ngx_str_t zkey, ngx_http_lua_value_t *value,
+typedef ngx_int_t (*ngx_http_fun_t)(ngx_str_t zkey, ngx_http_lua_value_t *value,
     void *userctx);
 
 ngx_int_t ngx_http_lua_shdict_api_zscan(ngx_shm_zone_t *shm_zone,
-    ngx_str_t key, fun_t fun, ngx_str_t lbound, void *userctx);
+    ngx_str_t key, ngx_http_fun_t fun, ngx_str_t lbound, void *userctx);
 
 ngx_int_t ngx_http_lua_shdict_api_zscan_locked(ngx_shm_zone_t *shm_zone,
-    ngx_str_t key, fun_t fun, ngx_str_t lbound, void *userctx);
+    ngx_str_t key, ngx_http_fun_t fun, ngx_str_t lbound, void *userctx);
 
 ngx_int_t ngx_http_lua_shdict_api_zrem(ngx_shm_zone_t *shm_zone,
     ngx_str_t key, ngx_str_t zkey);
