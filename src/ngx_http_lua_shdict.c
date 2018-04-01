@@ -3717,9 +3717,9 @@ add_node:
 
         zset_node = (ngx_http_lua_shdict_zset_node_t *) &znode->color;
 
-        rc = ngx_strcmp(zkey.data, zset_node->data);
+        rc = ngx_strncmp(zkey.data, zset_node->data, zkey.len);
 
-        if (rc < 0) {
+        if (rc < 0 || (rc == 0 && zset_node->data[zkey.len] != 0)) {
 
             znode = znode->left;
             continue;
@@ -4135,9 +4135,9 @@ ngx_http_lua_shdict_api_zrem_helper(ngx_shm_zone_t *shm_zone,
 
         zset_node = (ngx_http_lua_shdict_zset_node_t *) &node->color;
 
-        rc = ngx_strcmp(zkey.data, zset_node->data);
+        rc = ngx_strncmp(zkey.data, zset_node->data, zkey.len);
 
-        if (rc < 0) {
+        if (rc < 0 || (rc == 0 && zset_node->data[zkey.len] != 0)) {
 
             node = node->left;
             continue;
@@ -4413,9 +4413,9 @@ ngx_http_lua_shdict_api_zget_locked(ngx_shm_zone_t *shm_zone,
 
         zset_node = (ngx_http_lua_shdict_zset_node_t *) &node->color;
 
-        rc = ngx_strcmp(zkey.data, zset_node->data);
+        rc = ngx_strncmp(zkey.data, zset_node->data, zkey.len);
 
-        if (rc < 0) {
+        if (rc < 0 || (rc == 0 && zset_node->data[zkey.len] != 0)) {
 
             node = node->left;
             continue;
