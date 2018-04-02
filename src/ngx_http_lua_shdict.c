@@ -1408,13 +1408,15 @@ ngx_http_lua_shdict_get_helper(lua_State *L, int get_stale)
 {
     ngx_int_t                  rc;
     ngx_http_lua_shdict_ctx_t *ctx;
-    ngx_shm_zone_t            *shm_zone;
+    ngx_shm_zone_t            *shm_zone = NULL;
     int                        n = lua_gettop(L);
     ngx_lua_shdict_userctx_t   userctx = {
         .L = L, .get_stale = get_stale
     };
 
     userctx.err[0] = 0;
+
+    ngx_str_null(&userctx.key);
 
     if (ngx_http_lua_shdict_check_required(L, &shm_zone, &userctx.key, 2, 2) != NGX_OK) {
         return lua_gettop(L) - n;
@@ -2233,7 +2235,7 @@ ngx_http_lua_shdict_lua_set_helper(lua_State *L, int flags)
     ngx_str_t                    key;
     ngx_int_t                    rc;
     lua_Number                   exptime = 0;
-    ngx_shm_zone_t              *shm_zone;
+    ngx_shm_zone_t              *shm_zone = NULL;
     ngx_http_lua_shdict_ctx_t   *ctx;
     ngx_http_lua_value_t         value;
     int                          forcible = 0;
@@ -2320,7 +2322,7 @@ ngx_http_lua_shdict_incr(lua_State *L)
     ngx_str_t                      key;
     ngx_int_t                      rc;
     ngx_http_lua_shdict_ctx_t     *ctx;
-    ngx_shm_zone_t                *shm_zone;
+    ngx_shm_zone_t                *shm_zone = NULL;
     int                            forcible = 0;
     int                            n = lua_gettop(L);
 
@@ -2328,6 +2330,8 @@ ngx_http_lua_shdict_incr(lua_State *L)
         .val = nan("NaN"),
         .inc = 1
     };
+
+    ngx_str_null(&key);
 
     if (ngx_http_lua_shdict_check_required(L, &shm_zone, &key, 3, 4) != NGX_OK) {
         return lua_gettop(L) - n;
@@ -2729,12 +2733,14 @@ static int
 ngx_http_lua_shdict_lua_push_helper(lua_State *L, int flags)
 {
     ngx_int_t                        rc;
-    ngx_shm_zone_t                  *shm_zone;
+    ngx_shm_zone_t                  *shm_zone = NULL;
     ngx_http_lua_shdict_ctx_t       *ctx;
     ngx_str_t                        key;
     ngx_http_lua_value_t             value;
     uint32_t                         len = 0;
     int                              n = lua_gettop(L);
+
+    ngx_str_null(&key);
 
     if (ngx_http_lua_shdict_check_required(L, &shm_zone, &key, 3, 3)
         != NGX_OK) {
@@ -2979,13 +2985,15 @@ ngx_http_lua_shdict_lua_pop_helper(lua_State *L, int flags)
     ngx_str_t                        key;
     ngx_int_t                        rc;
     ngx_http_lua_shdict_ctx_t       *ctx;
-    ngx_shm_zone_t                  *shm_zone;
+    ngx_shm_zone_t                  *shm_zone = NULL;
     u_char                           buf[MAX_SHDICT_QUEUE_VALUE_SIZE];
     ngx_http_lua_value_t             value;
     int                              n = lua_gettop(L);
 
     value.value.s.data = buf;
     value.value.s.len = sizeof(buf);
+
+    ngx_str_null(&key);
 
     if (ngx_http_lua_shdict_check_required(L, &shm_zone, &key, 2, 2) != NGX_OK) {
         return lua_gettop(L) - n;
@@ -3108,9 +3116,11 @@ static int
 ngx_http_lua_shdict_llen(lua_State *L)
 {
     ngx_str_t                    key;
-    ngx_shm_zone_t              *shm_zone;
+    ngx_shm_zone_t              *shm_zone = NULL;
     uint32_t                     len = 0;
     int                          n = lua_gettop(L);
+
+    ngx_str_null(&key);
 
     if (ngx_http_lua_shdict_check_required(L, &shm_zone, &key, 2, 2) != NGX_OK) {
         return lua_gettop(L) - n;
@@ -3228,13 +3238,15 @@ ngx_http_lua_shdict_fun(lua_State *L)
     ngx_int_t                  rc;
     ngx_http_lua_shdict_ctx_t *ctx;
     lua_Number                 exptime = 0;
-    ngx_shm_zone_t            *shm_zone;
+    ngx_shm_zone_t            *shm_zone = NULL;
     int                        n = lua_gettop(L);
     ngx_lua_shdict_userctx_t   userctx = {
         .L = L, .get_stale = 0, .index = 3
     };
 
     userctx.err[0] = 0;
+
+    ngx_str_null(&userctx.key);
 
     if (ngx_http_lua_shdict_check_required(L, &shm_zone, &userctx.key, 3, 4) != NGX_OK) {
         return lua_gettop(L) - n;
@@ -3403,7 +3415,7 @@ static int
 ngx_http_lua_shared_dict_ttl(lua_State *L)
 {
     ngx_str_t                    key;
-    ngx_shm_zone_t              *shm_zone;
+    ngx_shm_zone_t              *shm_zone = NULL;
     int64_t                      ttl = 0;
     int                          n = lua_gettop(L);
 
@@ -3492,7 +3504,7 @@ static int
 ngx_http_lua_shared_dict_expire(lua_State *L)
 {
     ngx_str_t                    key;
-    ngx_shm_zone_t              *shm_zone;
+    ngx_shm_zone_t              *shm_zone = NULL;
     lua_Number                   exptime;
     int                          n = lua_gettop(L);
 
@@ -3974,7 +3986,7 @@ static int
 ngx_http_lua_shdict_zset_helper(lua_State *L, int flags)
 {
     ngx_http_lua_value_t        value;
-    ngx_shm_zone_t             *shm_zone;
+    ngx_shm_zone_t             *shm_zone = NULL;
     ngx_http_lua_shdict_ctx_t  *ctx;
     ngx_str_t                   zkey;
     lua_Number                  exptime = 0;
@@ -4223,10 +4235,12 @@ ngx_http_lua_shdict_zrem(lua_State *L)
 {
     ngx_str_t                        key;
     ngx_str_t                        zkey;
-    ngx_shm_zone_t                  *shm_zone;
+    ngx_shm_zone_t                  *shm_zone = NULL;
     ngx_http_lua_shdict_ctx_t       *ctx;
     ngx_int_t                        rc;
     int                              n = lua_gettop(L);
+
+    ngx_str_null(&key);
 
     if (ngx_http_lua_shdict_check_required(L, &shm_zone, &key, 3, 3) != NGX_OK ||
         ngx_http_lua_shdict_api_zset_zkey(L, &zkey) != NGX_OK) {
@@ -4335,9 +4349,11 @@ static int
 ngx_http_lua_shdict_zcard(lua_State *L)
 {
     ngx_str_t        key;
-    ngx_shm_zone_t  *shm_zone;
+    ngx_shm_zone_t  *shm_zone = NULL;
     uint32_t         len = 0;
     int              n = lua_gettop(L);
+
+    ngx_str_null(&key);
 
     if (ngx_http_lua_shdict_check_required(L, &shm_zone, &key, 2, 2) != NGX_OK) {
         return lua_gettop(L) - n;
@@ -4467,9 +4483,11 @@ ngx_http_lua_shdict_zget(lua_State *L)
     ngx_str_t                        zkey;
     ngx_int_t                        rc;
     ngx_http_lua_shdict_ctx_t       *ctx;
-    ngx_shm_zone_t                  *shm_zone;
+    ngx_shm_zone_t                  *shm_zone = NULL;
     ngx_http_lua_value_t             value;
     int                              n = lua_gettop(L);
+
+    ngx_str_null(&key);
 
     if (ngx_http_lua_shdict_check_required(L, &shm_zone, &key, 3, 3) != NGX_OK ||
         ngx_http_lua_shdict_api_zset_zkey(L, &zkey) != NGX_OK) {
@@ -4527,7 +4545,7 @@ ngx_http_lua_shdict_zgetall(lua_State *L)
     ngx_http_lua_shdict_node_t      *sd;
     ngx_rbtree_node_t               *node;
     ngx_rbtree_node_t               *sentinel;
-    ngx_shm_zone_t                  *shm_zone;
+    ngx_shm_zone_t                  *shm_zone = NULL;
     ngx_http_lua_shdict_zset_t      *zset;
     ngx_http_lua_shdict_zset_node_t *zset_node;
     int                              n = lua_gettop(L);
@@ -4776,13 +4794,15 @@ ngx_http_lua_shdict_zscan(lua_State *L)
 {
     ngx_int_t                   rc;
     ngx_http_lua_shdict_ctx_t  *ctx;
-    ngx_shm_zone_t             *shm_zone;
+    ngx_shm_zone_t             *shm_zone = NULL;
     ngx_str_t                   key;
     ngx_str_t                   lbound;
     int                         n = lua_gettop(L);
     ngx_lua_shdict_userctx_t    userctx = {
         .L = L, .get_stale = 0, .index = 3
     };
+
+    ngx_str_null(&key);
 
     if (ngx_http_lua_shdict_check_required(L, &shm_zone, &key, 3, 4) != NGX_OK) {
         return lua_gettop(L) - n;
