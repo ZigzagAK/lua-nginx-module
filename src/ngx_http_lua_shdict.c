@@ -65,6 +65,7 @@ static int ngx_http_lua_shdict_zgetall(lua_State *L);
 static int ngx_http_lua_shdict_zget(lua_State *L);
 static int ngx_http_lua_shdict_zcard(lua_State *L);
 static int ngx_http_lua_shdict_zscan(lua_State *L);
+static int ngx_http_lua_shdict_rps(lua_State *L);
 
 static ngx_inline ngx_shm_zone_t *ngx_http_lua_shdict_get_zone(lua_State *L,
                                                                int index);
@@ -141,6 +142,10 @@ ngx_http_lua_shdict_check_required(lua_State *L,
     *shm_zone = ngx_http_lua_shdict_get_zone(L, 1);
     if (*shm_zone == NULL) {
         return luaL_error(L, "bad \"zone\" argument");
+    }
+
+    if (key == NULL) {
+        return NGX_OK;
     }
 
     if (lua_isnil(L, 2)) {
@@ -780,6 +785,11 @@ ngx_http_lua_shdict_init_zone(ngx_shm_zone_t *shm_zone, void *data)
     ctx->shpool->log_nomem = 0;
 #endif
 
+    ctx->sh->last = ngx_current_msec;
+    ctx->sh->count[0] = 0;
+    ctx->sh->count[1] = 0;
+    ctx->sh->rps = 0;
+
     return NGX_OK;
 }
 
@@ -841,6 +851,16 @@ ngx_http_lua_shdict_lookup(ngx_shm_zone_t *shm_zone, ngx_uint_t hash,
 
     node = ctx->sh->rbtree.root;
     sentinel = ctx->sh->rbtree.sentinel;
+
+    if (ngx_current_msec - ctx->sh->last > 1000) {
+    	ctx->sh->rps = 1000 * ctx->sh->count[0] /
+    	    ngx_max(1000, ngx_current_msec - ctx->sh->last);
+        ctx->sh->last = ngx_current_msec;
+        ctx->sh->count[1] = ctx->sh->count[0];
+        ctx->sh->count[0] = 0;
+    }
+
+    ++ctx->sh->count[0];
 
     while (node != sentinel) {
 
@@ -957,9 +977,9 @@ ngx_http_lua_inject_shdict_api(ngx_http_lua_main_conf_t *lmcf, lua_State *L)
                 /* ngx.shared */
 
 #    if nginx_version >= 1011007
-        lua_createtable(L, 0 /* narr */, 30 /* nrec */); /* shared mt */
+        lua_createtable(L, 0 /* narr */, 31 /* nrec */); /* shared mt */
 #    else
-        lua_createtable(L, 0 /* narr */, 29 /* nrec */); /* shared mt */
+        lua_createtable(L, 0 /* narr */, 30 /* nrec */); /* shared mt */
 #    endif
 
         lua_pushcfunction(L, ngx_http_lua_shdict_get);
@@ -1050,6 +1070,9 @@ ngx_http_lua_inject_shdict_api(ngx_http_lua_main_conf_t *lmcf, lua_State *L)
         lua_pushcfunction(L, ngx_http_lua_shared_dict_free_space);
         lua_setfield(L, -2, "free_space");
 #    endif
+
+        lua_pushcfunction(L, ngx_http_lua_shdict_rps);
+        lua_setfield(L, -2, "rps");
 
         lua_pushvalue(L, -1); /* shared mt mt */
         lua_setfield(L, -2, "__index"); /* shared mt */
@@ -4855,6 +4878,34 @@ ngx_http_lua_shdict_zscan(lua_State *L)
     }
 
     return 1;
+}
+
+
+static int
+ngx_http_lua_shdict_rps(lua_State *L)
+{
+    ngx_http_lua_shdict_ctx_t  *ctx;
+    ngx_shm_zone_t             *shm_zone = NULL;
+    int                         n = lua_gettop(L);
+
+    if (ngx_http_lua_shdict_check_required(L, &shm_zone, NULL, 1, 1) != NGX_OK) {
+        return lua_gettop(L) - n;
+    }
+
+    ctx = shm_zone->data;
+
+    if (ngx_current_msec - ctx->sh->last > 1000) {
+    	ctx->sh->rps = 1000 * ctx->sh->count[0] /
+    	    ngx_max(1000, ngx_current_msec - ctx->sh->last);
+        ctx->sh->last = ngx_current_msec;
+        ctx->sh->count[1] = ctx->sh->count[0];
+        ctx->sh->count[0] = 0;
+    }
+
+    lua_pushinteger(L, ctx->sh->count[1]);
+    lua_pushinteger(L, ctx->sh->rps);
+
+    return 2;
 }
 
 
