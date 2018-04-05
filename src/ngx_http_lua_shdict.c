@@ -965,6 +965,112 @@ ngx_http_lua_shdict_expire(ngx_http_lua_shdict_ctx_t *ctx, ngx_uint_t n)
 }
 
 
+static void
+ngx_http_lua_inject_shdict_mt(lua_State *L)
+{
+#    if nginx_version >= 1011007
+    lua_createtable(L, 0 /* narr */, 31 /* nrec */); /* shared mt */
+#    else
+    lua_createtable(L, 0 /* narr */, 30 /* nrec */); /* shared mt */
+#    endif
+
+    lua_pushcfunction(L, ngx_http_lua_shdict_get);
+    lua_setfield(L, -2, "get");
+
+    lua_pushcfunction(L, ngx_http_lua_shdict_get_stale);
+    lua_setfield(L, -2, "get_stale");
+
+    lua_pushcfunction(L, ngx_http_lua_shdict_set);
+    lua_setfield(L, -2, "set");
+
+    lua_pushcfunction(L, ngx_http_lua_shdict_safe_set);
+    lua_setfield(L, -2, "safe_set");
+
+    lua_pushcfunction(L, ngx_http_lua_shdict_add);
+    lua_setfield(L, -2, "add");
+
+    lua_pushcfunction(L, ngx_http_lua_shdict_safe_add);
+    lua_setfield(L, -2, "safe_add");
+
+    lua_pushcfunction(L, ngx_http_lua_shdict_replace);
+    lua_setfield(L, -2, "replace");
+
+    lua_pushcfunction(L, ngx_http_lua_shdict_incr);
+    lua_setfield(L, -2, "incr");
+
+    lua_pushcfunction(L, ngx_http_lua_shdict_delete);
+    lua_setfield(L, -2, "delete");
+
+    lua_pushcfunction(L, ngx_http_lua_shdict_lpush);
+    lua_setfield(L, -2, "lpush");
+
+    lua_pushcfunction(L, ngx_http_lua_shdict_rpush);
+    lua_setfield(L, -2, "rpush");
+
+    lua_pushcfunction(L, ngx_http_lua_shdict_lpop);
+    lua_setfield(L, -2, "lpop");
+
+    lua_pushcfunction(L, ngx_http_lua_shdict_rpop);
+    lua_setfield(L, -2, "rpop");
+
+    lua_pushcfunction(L, ngx_http_lua_shdict_llen);
+    lua_setfield(L, -2, "llen");
+
+    lua_pushcfunction(L, ngx_http_lua_shdict_zset);
+    lua_setfield(L, -2, "zset");
+
+    lua_pushcfunction(L, ngx_http_lua_shdict_zadd);
+    lua_setfield(L, -2, "zadd");
+
+    lua_pushcfunction(L, ngx_http_lua_shdict_zrem);
+    lua_setfield(L, -2, "zrem");
+
+    lua_pushcfunction(L, ngx_http_lua_shdict_zget);
+    lua_setfield(L, -2, "zget");
+
+    lua_pushcfunction(L, ngx_http_lua_shdict_zgetall);
+    lua_setfield(L, -2, "zgetall");
+
+    lua_pushcfunction(L, ngx_http_lua_shdict_zcard);
+    lua_setfield(L, -2, "zcard");
+
+    lua_pushcfunction(L, ngx_http_lua_shdict_zscan);
+    lua_setfield(L, -2, "zscan");
+
+    lua_pushcfunction(L, ngx_http_lua_shdict_flush_all);
+    lua_setfield(L, -2, "flush_all");
+
+    lua_pushcfunction(L, ngx_http_lua_shdict_flush_expired);
+    lua_setfield(L, -2, "flush_expired");
+
+    lua_pushcfunction(L, ngx_http_lua_shdict_get_keys);
+    lua_setfield(L, -2, "get_keys");
+
+    lua_pushcfunction(L, ngx_http_lua_shdict_fun);
+    lua_setfield(L, -2, "fun");
+
+    lua_pushcfunction(L, ngx_http_lua_shared_dict_ttl);
+    lua_setfield(L, -2, "ttl");
+
+    lua_pushcfunction(L, ngx_http_lua_shared_dict_expire);
+    lua_setfield(L, -2, "expire");
+
+    lua_pushcfunction(L, ngx_http_lua_shared_dict_capacity);
+    lua_setfield(L, -2, "capacity");
+
+#    if nginx_version >= 1011007
+    lua_pushcfunction(L, ngx_http_lua_shared_dict_free_space);
+    lua_setfield(L, -2, "free_space");
+#    endif
+
+    lua_pushcfunction(L, ngx_http_lua_shdict_rps);
+    lua_setfield(L, -2, "rps");
+
+    lua_pushvalue(L, -1); /* shared mt mt */
+    lua_setfield(L, -2, "__index"); /* shared mt */
+}
+
+
 void
 ngx_http_lua_inject_shdict_api(ngx_http_lua_main_conf_t *lmcf, lua_State *L)
 {
@@ -974,108 +1080,9 @@ ngx_http_lua_inject_shdict_api(ngx_http_lua_main_conf_t *lmcf, lua_State *L)
 
     if (lmcf->shdict_zones != NULL) {
         lua_createtable(L, 0, lmcf->shdict_zones->nelts /* nrec */);
-                /* ngx.shared */
+        /* ngx.shared */
 
-#    if nginx_version >= 1011007
-        lua_createtable(L, 0 /* narr */, 31 /* nrec */); /* shared mt */
-#    else
-        lua_createtable(L, 0 /* narr */, 30 /* nrec */); /* shared mt */
-#    endif
-
-        lua_pushcfunction(L, ngx_http_lua_shdict_get);
-        lua_setfield(L, -2, "get");
-
-        lua_pushcfunction(L, ngx_http_lua_shdict_get_stale);
-        lua_setfield(L, -2, "get_stale");
-
-        lua_pushcfunction(L, ngx_http_lua_shdict_set);
-        lua_setfield(L, -2, "set");
-
-        lua_pushcfunction(L, ngx_http_lua_shdict_safe_set);
-        lua_setfield(L, -2, "safe_set");
-
-        lua_pushcfunction(L, ngx_http_lua_shdict_add);
-        lua_setfield(L, -2, "add");
-
-        lua_pushcfunction(L, ngx_http_lua_shdict_safe_add);
-        lua_setfield(L, -2, "safe_add");
-
-        lua_pushcfunction(L, ngx_http_lua_shdict_replace);
-        lua_setfield(L, -2, "replace");
-
-        lua_pushcfunction(L, ngx_http_lua_shdict_incr);
-        lua_setfield(L, -2, "incr");
-
-        lua_pushcfunction(L, ngx_http_lua_shdict_delete);
-        lua_setfield(L, -2, "delete");
-
-        lua_pushcfunction(L, ngx_http_lua_shdict_lpush);
-        lua_setfield(L, -2, "lpush");
-
-        lua_pushcfunction(L, ngx_http_lua_shdict_rpush);
-        lua_setfield(L, -2, "rpush");
-
-        lua_pushcfunction(L, ngx_http_lua_shdict_lpop);
-        lua_setfield(L, -2, "lpop");
-
-        lua_pushcfunction(L, ngx_http_lua_shdict_rpop);
-        lua_setfield(L, -2, "rpop");
-
-        lua_pushcfunction(L, ngx_http_lua_shdict_llen);
-        lua_setfield(L, -2, "llen");
-
-        lua_pushcfunction(L, ngx_http_lua_shdict_zset);
-        lua_setfield(L, -2, "zset");
-
-        lua_pushcfunction(L, ngx_http_lua_shdict_zadd);
-        lua_setfield(L, -2, "zadd");
-
-        lua_pushcfunction(L, ngx_http_lua_shdict_zrem);
-        lua_setfield(L, -2, "zrem");
-
-        lua_pushcfunction(L, ngx_http_lua_shdict_zget);
-        lua_setfield(L, -2, "zget");
-
-        lua_pushcfunction(L, ngx_http_lua_shdict_zgetall);
-        lua_setfield(L, -2, "zgetall");
-
-        lua_pushcfunction(L, ngx_http_lua_shdict_zcard);
-        lua_setfield(L, -2, "zcard");
-
-        lua_pushcfunction(L, ngx_http_lua_shdict_zscan);
-        lua_setfield(L, -2, "zscan");
-
-        lua_pushcfunction(L, ngx_http_lua_shdict_flush_all);
-        lua_setfield(L, -2, "flush_all");
-
-        lua_pushcfunction(L, ngx_http_lua_shdict_flush_expired);
-        lua_setfield(L, -2, "flush_expired");
-
-        lua_pushcfunction(L, ngx_http_lua_shdict_get_keys);
-        lua_setfield(L, -2, "get_keys");
-
-        lua_pushcfunction(L, ngx_http_lua_shdict_fun);
-        lua_setfield(L, -2, "fun");
-
-        lua_pushcfunction(L, ngx_http_lua_shared_dict_ttl);
-        lua_setfield(L, -2, "ttl");
-
-        lua_pushcfunction(L, ngx_http_lua_shared_dict_expire);
-        lua_setfield(L, -2, "expire");
-
-        lua_pushcfunction(L, ngx_http_lua_shared_dict_capacity);
-        lua_setfield(L, -2, "capacity");
-
-#    if nginx_version >= 1011007
-        lua_pushcfunction(L, ngx_http_lua_shared_dict_free_space);
-        lua_setfield(L, -2, "free_space");
-#    endif
-
-        lua_pushcfunction(L, ngx_http_lua_shdict_rps);
-        lua_setfield(L, -2, "rps");
-
-        lua_pushvalue(L, -1); /* shared mt mt */
-        lua_setfield(L, -2, "__index"); /* shared mt */
+        ngx_http_lua_inject_shdict_mt(L);
 
         zone = lmcf->shdict_zones->elts;
 
@@ -2446,8 +2453,11 @@ ngx_http_lua_add_shared_dict(ngx_conf_t *cf,
     ngx_str_t                *val;
     ngx_http_lua_main_conf_t *lmcf;
     ngx_command_t             null_cmd = ngx_null_command;
+    lua_State                *L;
+    ngx_shm_zone_t           *zone;
 
     lmcf = ngx_http_conf_get_module_main_conf(cf, ngx_http_lua_module);
+    L = lmcf->lua;
 
     conf = ngx_pcalloc(cf->pool, sizeof(ngx_conf_t));
     if (conf == NULL) {
@@ -2482,13 +2492,38 @@ ngx_http_lua_add_shared_dict(ngx_conf_t *cf,
     ngx_memcpy(val[2].data, size.data, size.len);
 
     if (ngx_http_lua_shared_dict(conf, &null_cmd, lmcf) == NGX_CONF_ERROR) {
-        ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "failed to add \"lua_shared_dict %V %V\"",
-                           name, size);
+        ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
+           "failed to add \"lua_shared_dict %V %V\"", name, size);
         return NULL;
     }
 
-    return ((ngx_shm_zone_t **)
+    zone = ((ngx_shm_zone_t **)
         lmcf->shdict_zones->elts)[lmcf->shdict_zones->nelts - 1];
+
+    lua_getglobal(L, "ngx");
+    if (lua_isnil(L, -1)) {
+        return zone;
+    }
+
+    lua_getfield(L, -1, "shared");
+    if (lua_isnil(L, -1)) {
+        lua_pop(L, 1);
+        return zone;
+    }
+
+    /* shared mt key */
+
+    lua_createtable(L, 1 /* narr */, 0 /* nrec */);
+    /* table of zone[i] */
+    lua_pushlightuserdata(L, zone); /* shared mt key ud */
+    lua_rawseti(L, -2, SHDICT_USERDATA_INDEX); /* {zone[i]} */
+    ngx_http_lua_inject_shdict_mt(L);
+    lua_setmetatable(L, -2); /* shared mt key ud */
+    lua_setfield(L, -2, (char *) val[1].data); /* shared mt */
+
+    lua_pop(L, 2);
+
+    return zone;
 }
 
 
