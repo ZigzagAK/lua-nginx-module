@@ -61,6 +61,7 @@ typedef struct {
     ngx_str_t                     name;
     ngx_http_lua_main_conf_t     *main_conf;
     ngx_log_t                    *log;
+    int                           mt;
 } ngx_http_lua_shdict_ctx_t;
 
 

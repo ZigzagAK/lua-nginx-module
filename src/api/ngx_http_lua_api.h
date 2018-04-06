@@ -167,6 +167,9 @@ ngx_int_t ngx_http_lua_shdict_api_ttl(ngx_shm_zone_t *shm_zone,
 ngx_int_t ngx_http_lua_shdict_api_ttl_locked(ngx_shm_zone_t *shm_zone,
     ngx_str_t key, int64_t *ttl);
 
+ngx_int_t ngx_http_lua_shdict_api_rps(ngx_shm_zone_t *shm_zone,
+    uint32_t *count, uint32_t *rps);
+
 /* zset */
 
 typedef void (*ngx_http_lua_zset_destructor_t)(void *p, size_t len);
