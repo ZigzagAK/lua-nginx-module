@@ -588,6 +588,8 @@ ngx_http_lua_shdict_rbtree_free(ngx_http_lua_shdict_ctx_t *ctx,
             zset_node = (ngx_http_lua_shdict_zset_node_t *) &node->color;
 
             if (zset_node->value.data) {
+                (* (ngx_http_lua_zset_destructor_t) zset_node->free)
+                    (zset_node->value.data, zset_node->value.len);
                 ngx_slab_free_locked(ctx->shpool, zset_node->value.data);
             }
 

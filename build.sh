@@ -56,7 +56,7 @@ function build_luajit() {
 function build_cJSON() {
   echo "Build cjson"
   cd lua-cjson
-  PREFIX="$JIT_PREFIX/usr/local" make > /dev/null
+  LUA_INCLUDE_DIR="$JIT_PREFIX/usr/local/include/luajit-2.1" LDFLAGS="-L$JIT_PREFIX/usr/local/lib -lluajit-5.1" make > /dev/null
   r=$?
   if [ $r -ne 0 ]; then
     exit $r
@@ -174,7 +174,7 @@ function download() {
   download_nginx
 
   download_module simpl       ngx_devel_kit                    master
-  download_module openresty   lua-cjson                        master
+  download_module ZigzagAK    lua-cjson                        mixed
   download_module openresty   echo-nginx-module                master
   download_module openresty   memc-nginx-module                master
 
@@ -198,8 +198,6 @@ function install_files() {
 
 function build() {
   cd build
-
-  patch -N -p0 < ../lua-cjson-Makefile.patch
 
   if [ $build_deps -eq 1 ] || [ ! -e deps/luajit ]; then
     build_luajit
