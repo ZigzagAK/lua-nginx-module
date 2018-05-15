@@ -176,3 +176,35 @@ val=hello flags=999
 val=hello flags=999
 --- no_error_log
 [error]
+
+
+=== TEST 3: fun nil
+--- http_config
+    lua_shared_dict dogs 1m;
+--- config
+    location = /test {
+        content_by_lua_block {
+            local dogs = ngx.shared.dogs
+
+            dogs:fun("foo", function(val, flags)
+              return nil, 0
+            end, 0.1)
+
+            dogs:fun("foo", function(val, flags)
+              return nil, 0
+            end, 0.1)
+
+            dogs:fun("foo", function(val, flags)
+              return "ok", 0
+            end, 0.1)
+
+            local v = dogs:get("foo")
+            ngx.say(v)
+        }
+    }
+--- request
+GET /test
+--- response_body
+ok
+--- no_error_log
+[error]

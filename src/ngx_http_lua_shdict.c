@@ -1200,11 +1200,16 @@ ngx_http_lua_shdict_api_fun_helper(ngx_shm_zone_t *shm_zone,
 
     if (rc == NGX_DECLINED) {
 
-        return ngx_http_lua_shdict_rbtree_insert_node(ctx,
-            key, ngx_http_lua_value_to_raw(&value),
-            value.type,
-            expires, value.user_flags,
-            0, forcible);
+            if (value.type != SHDICT_TNIL) {
+
+                return ngx_http_lua_shdict_rbtree_insert_node(ctx,
+                    key, ngx_http_lua_value_to_raw(&value),
+                    value.type,
+                    expires, value.user_flags,
+                    0, forcible);
+            }
+
+            return NGX_LUA_SHDICT_OK;
     }
 
     if (value.type != sd->value_type) {
