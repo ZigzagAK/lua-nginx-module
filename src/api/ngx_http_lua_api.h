@@ -94,6 +94,15 @@ void ngx_http_lua_shdict_lock(ngx_shm_zone_t *shm_zone);
 
 void ngx_http_lua_shdict_unlock(ngx_shm_zone_t *shm_zone);
 
+int
+ngx_http_lua_shdict_expire_items(ngx_shm_zone_t *shm_zone, ngx_uint_t n);
+
+#    if nginx_version >= 1011007
+
+ngx_int_t ngx_http_lua_shdict_api_used(ngx_shm_zone_t *shm_zone);
+
+#    endif
+
 typedef ngx_int_t (*ngx_http_lua_get_fun_t)(ngx_http_lua_value_t *value,
     int stale, void *userctx);
 

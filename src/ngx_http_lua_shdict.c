@@ -100,6 +100,64 @@ ngx_http_lua_shdict_unlock(ngx_shm_zone_t *shm_zone)
 }
 
 
+int
+ngx_http_lua_shdict_expire_items(ngx_shm_zone_t *shm_zone, ngx_uint_t n)
+{
+    ngx_http_lua_shdict_ctx_t *ctx = shm_zone->data;
+    return ngx_http_lua_shdict_expire(ctx, n);
+}
+
+
+static void *
+ngx_http_lua_shdict_alloc_locked(ngx_http_lua_shdict_ctx_t *ctx, int n)
+{
+    int   i;
+    void *p = NULL;
+
+    for (i = 0; p == NULL && i < 30; i++) {
+
+        p = ngx_slab_alloc_locked(ctx->shpool, n);
+
+        if (p == NULL) {
+
+            if (ngx_http_lua_shdict_expire(ctx, 0) == 0) {
+                break;
+            }
+        }
+    }
+
+    return p;
+}
+
+
+static void *
+ngx_http_lua_shdict_calloc_locked(ngx_http_lua_shdict_ctx_t *ctx, int n)
+{
+    void *p = ngx_http_lua_shdict_alloc_locked(ctx, n);
+    if (p) {
+        ngx_memzero(p, n);
+    }
+    return p;
+}
+
+
+#    if nginx_version >= 1011007
+
+ngx_int_t
+ngx_http_lua_shdict_api_used(ngx_shm_zone_t *shm_zone)
+{
+    size_t                       bytes;
+    ngx_http_lua_shdict_ctx_t   *ctx;
+
+    ctx = shm_zone->data;
+
+    bytes = ctx->shpool->pfree * ngx_pagesize;
+
+    return (shm_zone->shm.size - bytes) * 100 / shm_zone->shm.size;
+}
+
+#    endif
+
 static ngx_inline ngx_str_t
 ngx_http_lua_get_string(lua_State *L, int index)
 {
@@ -3701,7 +3759,7 @@ init_zset:
 
     dd("length after aligned: %d", n);
 
-    node = ngx_slab_alloc_locked(ctx->shpool, n);
+    node = ngx_http_lua_shdict_calloc_locked(ctx, n);
 
     if (node == NULL) {
 
@@ -3789,7 +3847,7 @@ add_node:
 
         dd("length after aligned: %d", n);
 
-        znode = ngx_slab_calloc_locked(ctx->shpool, n);
+        znode = ngx_http_lua_shdict_calloc_locked(ctx, n);
 
         if (znode == NULL) {
 
@@ -3826,7 +3884,7 @@ add_node:
 
         zset_node->value_type = value.type;
         zset_node->value.len = raw_value.len;
-        zset_node->value.data = ngx_slab_alloc_locked(ctx->shpool,
+        zset_node->value.data = ngx_http_lua_shdict_calloc_locked(ctx,
             (uintptr_t) ngx_align_ptr(raw_value.len, NGX_ALIGNMENT));
 
         if (zset_node->value.data == NULL) {
@@ -5753,6 +5811,5 @@ ngx_http_lua_ffi_shdict_free_space(ngx_shm_zone_t *zone)
 
 
 #endif /* NGX_LUA_NO_FFI_API */
-
 
 /* vi:set ft=c ts=4 sw=4 et fdm=marker: */
