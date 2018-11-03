@@ -25,6 +25,7 @@ ngx_http_lua_init_worker(ngx_cycle_t *cycle)
     void                        *cur, *prev;
     ngx_uint_t                   i;
     ngx_conf_t                   conf;
+    ngx_conf_file_t              cf_file;
     ngx_cycle_t                 *fake_cycle;
     ngx_module_t               **modules;
     ngx_open_file_t             *file, *ofile;
@@ -46,13 +47,15 @@ ngx_http_lua_init_worker(ngx_cycle_t *cycle)
 
     /* lmcf != NULL && lmcf->lua != NULL */
 
-    /* disable init_worker_by_lua* and destroy lua VM in cache processes */
+#if !(NGX_WIN32)
     if (ngx_process == NGX_PROCESS_HELPER
-#if defined(HAVE_PRIVILEGED_PROCESS_PATCH) && !NGX_WIN32
+#   ifdef HAVE_PRIVILEGED_PROCESS_PATCH
         && !ngx_is_privileged_agent
-#endif
+#   endif
        )
     {
+        /* disable init_worker_by_lua* and destroy lua VM in cache processes */
+
         ngx_log_debug2(NGX_LOG_DEBUG_HTTP, ngx_cycle->log, 0,
                        "lua close the global Lua VM %p in the "
                        "cache helper process %P", lmcf->lua, ngx_pid);
@@ -62,6 +65,7 @@ ngx_http_lua_init_worker(ngx_cycle_t *cycle)
 
         return NGX_OK;
     }
+#endif  /* NGX_WIN32 */
 
     if (lmcf->init_worker_handler == NULL) {
         return NGX_OK;
@@ -162,6 +166,10 @@ ngx_http_lua_init_worker(ngx_cycle_t *cycle)
     conf.cycle = fake_cycle;
     conf.pool = fake_cycle->pool;
     conf.log = cycle->log;
+
+    ngx_memzero(&cf_file, sizeof(cf_file));
+    cf_file.file.name = cycle->conf_file;
+    conf.conf_file = &cf_file;
 
     http_ctx.loc_conf = ngx_pcalloc(conf.pool,
                                     sizeof(void *) * ngx_http_max_module);

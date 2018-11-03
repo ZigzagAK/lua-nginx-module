@@ -505,9 +505,11 @@ ngx_http_lua_ssl_sess_fetch_by_chunk(lua_State *L, ngx_http_request_t *r)
     /*  move code closure to new coroutine */
     lua_xmove(L, co, 1);
 
+#ifndef OPENRESTY_LUAJIT
     /*  set closure's env table to new coroutine's globals table */
     ngx_http_lua_get_globals_table(co);
     lua_setfenv(co, -2);
+#endif
 
     /* save nginx request in coroutine globals table */
     ngx_http_lua_set_req(co, r);
@@ -567,6 +569,7 @@ ngx_http_lua_ffi_ssl_set_serialized_session(ngx_http_request_t *r,
     ngx_ssl_conn_t                  *ssl_conn;
     ngx_connection_t                *c;
     ngx_ssl_session_t               *session = NULL;
+    ngx_ssl_session_t               *old_session;
     ngx_http_lua_ssl_ctx_t          *cctx;
 
     c = r->connection;
@@ -597,7 +600,12 @@ ngx_http_lua_ffi_ssl_set_serialized_session(ngx_http_request_t *r,
         return NGX_ERROR;
     }
 
+    old_session = cctx->session;
     cctx->session = session;
+
+    if (old_session != NULL) {
+        ngx_ssl_free_session(old_session);
+    }
 
     return NGX_OK;
 }

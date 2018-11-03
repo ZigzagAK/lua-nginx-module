@@ -22,7 +22,7 @@
 /* Public API for other Nginx modules */
 
 
-#define ngx_http_lua_version  10012
+#define ngx_http_lua_version  10014
 
 
 #ifndef SHDICT_TNIL
@@ -55,6 +55,12 @@ typedef struct {
 #ifndef MAX_SHDICT_QUEUE_VALUE_SIZE
 #define MAX_SHDICT_QUEUE_VALUE_SIZE (32768)
 #endif
+
+typedef struct {
+    int          len;
+    /* this padding hole on 64-bit systems is expected */
+    u_char      *data;
+} ngx_http_lua_ffi_str_t;
 
 lua_State *ngx_http_lua_get_global_state(ngx_conf_t *cf);
 
