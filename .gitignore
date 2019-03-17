@@ -27,6 +27,7 @@ test/blib
 test.sh
 t.sh
 t/t.sh
+t/servroot*
 test/t/servroot/
 releng
 reset

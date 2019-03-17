@@ -9,6 +9,11 @@
 #define _NGX_HTTP_LUA_UTIL_H_INCLUDED_
 
 
+#ifdef DDEBUG
+#include "ddebug.h"
+#endif
+
+
 #include "ngx_http_lua_common.h"
 #include "ngx_http_lua_api.h"
 
@@ -245,6 +250,9 @@ ngx_http_cleanup_t *ngx_http_lua_cleanup_add(ngx_http_request_t *r,
 void ngx_http_lua_cleanup_free(ngx_http_request_t *r,
     ngx_http_cleanup_pt *cleanup);
 
+#if (NGX_HTTP_LUA_HAVE_SA_RESTART)
+void ngx_http_lua_set_sa_restart(ngx_log_t *log);
+#endif
 
 #define ngx_http_lua_check_if_abortable(L, ctx)                              \
     if ((ctx)->no_abort) {                                                   \
@@ -290,7 +298,9 @@ ngx_http_lua_create_ctx(ngx_http_request_t *r)
     if (!llcf->enable_code_cache && r->connection->fd != (ngx_socket_t) -1) {
         lmcf = ngx_http_get_module_main_conf(r, ngx_http_lua_module);
 
+#ifdef DDEBUG
         dd("lmcf: %p", lmcf);
+#endif
 
         L = ngx_http_lua_init_vm(lmcf->lua, lmcf->cycle, r->pool, lmcf,
                                  r->connection->log, &cln);
@@ -331,7 +341,11 @@ ngx_http_lua_get_lua_vm(ngx_http_request_t *r, ngx_http_lua_ctx_t *ctx)
     }
 
     lmcf = ngx_http_get_module_main_conf(r, ngx_http_lua_module);
+
+#ifdef DDEBUG
     dd("lmcf->lua: %p", lmcf->lua);
+#endif
+
     return lmcf->lua;
 }
 
@@ -403,9 +417,11 @@ ngx_http_lua_hash_str(u_char *src, size_t n)
 
 
 static ngx_inline ngx_int_t
-ngx_http_lua_set_content_type(ngx_http_request_t *r)
+ngx_http_lua_set_content_type(ngx_http_request_t *r, ngx_http_lua_ctx_t *ctx)
 {
     ngx_http_lua_loc_conf_t     *llcf;
+
+    ctx->mime_set = 1;
 
     llcf = ngx_http_get_module_loc_conf(r, ngx_http_lua_module);
     if (llcf->use_default_type

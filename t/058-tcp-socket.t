@@ -245,11 +245,11 @@ attempt to send data on a closed socket:
 
 --- request
 GET /t
---- response_body
+--- response_body_like
 connected: 1
 request sent: 56
-first line received: HTTP/1.1 200 OK
-second line received: Server: openresty
+first line received: HTTP\/1\.1 200 OK
+second line received: (?:Date|Server): .*?
 --- no_error_log
 [error]
 --- timeout: 10
@@ -298,7 +298,7 @@ qr/connect\(\) failed \(\d+: Connection refused\)/
     location /test {
         content_by_lua '
             local sock = ngx.socket.tcp()
-            local ok, err = sock:connect("agentzh.org", 12345)
+            local ok, err = sock:connect("127.0.0.2", 12345)
             ngx.say("connect: ", ok, " ", err)
 
             local bytes
@@ -321,7 +321,7 @@ send: nil closed
 receive: nil closed
 close: nil closed
 --- error_log
-lua tcp socket connect timed out, when connecting to 172.105.207.225:12345
+lua tcp socket connect timed out, when connecting to 127.0.0.2:12345
 --- timeout: 10
 
 
@@ -914,7 +914,7 @@ close: 1 nil
                 end
             end
 
-            ok, err = sock:close()
+            local ok, err = sock:close()
             ngx.say("close: ", ok, " ", err)
         ';
     }
@@ -961,7 +961,7 @@ close: 1 nil
             line, err = sock:receive()
             ngx.say("receive: ", line, " ", err)
 
-            ok, err = sock:close()
+            local ok, err = sock:close()
             ngx.say("close: ", ok, " ", err)
         ';
     }
@@ -2611,7 +2611,7 @@ close: 1 nil
             local ready = false
             local fatal = false
 
-            function f()
+            local function f()
                 local line, err, part = sock:receive()
                 if not line then
                     ngx.say("failed to receive the 1st line: ", err, " [", part, "]")
@@ -3315,7 +3315,7 @@ close: 1 nil
 
             local thr = ngx.thread.spawn(function ()
                 sock = ngx.socket.tcp()
-                local ok, err = sock:connect("agentzh.org", 12345)
+                local ok, err = sock:connect("127.0.0.2", 12345)
                 if not ok then
                     ngx.say("failed to connect: ", err)
                     return
@@ -3464,7 +3464,7 @@ lua http cleanup reuse
                 ngx.say("failed to create timer: ", err)
             end
 
-            i = 1
+            local i = 1
             while not done do
                 local time = 0.005 * i
                 if time > 0.1 then
@@ -3545,7 +3545,7 @@ lua http cleanup reuse
                 ngx.say("failed to create timer: ", err)
             end
 
-            i = 1
+            local i = 1
             while not done do
                 local time = 0.005 * i
                 if time > 0.1 then
@@ -3720,10 +3720,10 @@ sudo iptables -I OUTPUT 1 -p udp --dport 10086 -j REJECT
     }
 --- request
 GET /t
---- response_body
-failed to connect: www.google.com could not be resolved
-failed to connect: www.google.com could not be resolved
-failed to connect: www.google.com could not be resolved
+--- response_body_like
+failed to connect: www.google.com could not be resolved(?: \(\d+: Operation timed out\))?
+failed to connect: www.google.com could not be resolved(?: \(\d+: Operation timed out\))?
+failed to connect: www.google.com could not be resolved(?: \(\d+: Operation timed out\))?
 hello!
 --- error_log eval
 qr{\[alert\] .*? send\(\) failed \(\d+: Operation not permitted\) while resolving}

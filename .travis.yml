@@ -1,5 +1,5 @@
 sudo: required
-dist: trusty
+dist: xenial
 
 os: linux
 
@@ -48,8 +48,8 @@ env:
     - DRIZZLE_VER=2011.07.21
     - TEST_NGINX_SLEEP=0.006
   matrix:
-    - NGINX_VERSION=1.13.6 OPENSSL_VER=1.0.2n OPENSSL_OPT="" OPENSSL_PATCH_VER=1.0.2h
-    - NGINX_VERSION=1.13.6 OPENSSL_VER=1.1.0h OPENSSL_OPT="" OPENSSL_PATCH_VER=1.1.0d
+    - NGINX_VERSION=1.15.8 OPENSSL_VER=1.0.2q OPENSSL_OPT="" OPENSSL_PATCH_VER=1.0.2h
+    - NGINX_VERSION=1.15.8 OPENSSL_VER=1.1.0j OPENSSL_OPT="" OPENSSL_PATCH_VER=1.1.0d
     # TODO: when adding an OpenSSL version >= 1.1.1, please add "enable-tls1_3"
     # to $OPENSSL_OPT.
 
@@ -96,6 +96,8 @@ before_script:
 
 script:
   - sudo iptables -I OUTPUT 1 -p udp --dport 10086 -j REJECT
+  - sudo iptables -A OUTPUT -p tcp --dst 127.0.0.2 --dport 12345 -j DROP
+  - sudo iptables -A OUTPUT -p udp --dst 127.0.0.2 --dport 12345 -j DROP
   - cd luajit2/
   - make -j$JOBS CCDEBUG=-g Q= PREFIX=$LUAJIT_PREFIX CC=$CC XCFLAGS='-DLUA_USE_APICHECK -DLUA_USE_ASSERT -msse4.2' > build.log 2>&1 || (cat build.log && exit 1)
   - sudo make install PREFIX=$LUAJIT_PREFIX > build.log 2>&1 || (cat build.log && exit 1)
