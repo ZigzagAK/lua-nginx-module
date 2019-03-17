@@ -3,60 +3,222 @@
 # Copyright, Aleksey Konovkin (alkon2000@mail.ru)
 # BSD license type
 
-download=0
-if [ "$1" == "1" ]; then
-  download=1
-fi
-build_deps=0
-
-DIR="$(pwd)"
-
-VERSION="1.15.5"
-PCRE_VERSION="8.39"
-LUAJIT_VERSION="2.1.0-beta2"
-
-SUFFIX=""
-
-BASE_PREFIX="$DIR/build"
-INSTALL_PREFIX="$DIR/install"
-
-PCRE_PREFIX="$DIR/build/pcre-$PCRE_VERSION"
-JIT_PREFIX="$DIR/build/deps/luajit"
-
-export LUAJIT_INC="$JIT_PREFIX/usr/local/include/luajit-2.1"
-export LUAJIT_LIB="$JIT_PREFIX/usr/local/lib"
-
-export LD_LIBRARY_PATH="$JIT_PREFIX/lib"
-
-function clean() {
-  rm -rf install  2>/dev/null
-  rm -rf $(ls -1d build/* 2>/dev/null | grep -v deps)    2>/dev/null
-  if [ $download -eq 1 ]; then
-    rm -rf download 2>/dev/null
-  fi
-}
-
-if [ "$1" == "clean" ]; then
-  clean
+if [ "$1" == "" ]; then
+  echo "build.sh <clean/clean_all> <download/download_all> <build>"
   exit 0
 fi
 
-function build_luajit() {
-  echo "Build luajit"
-  cd LuaJIT-$LUAJIT_VERSION
-  make -j 8 > /dev/null
+download=0
+download_only=0
+download_all=0
+build_deps=0
+clean_all=0
+compile=0
+build_only=0
+make_clean=0
+
+DIR="$(pwd)"
+DIAG_DIR="diag"
+VCS_PATH=${DIR%/*/*}
+
+VERSION="1.15.6"
+PCRE_VERSION="8.40"
+ZLIB_VERSION="1.2.11"
+
+SUFFIX=""
+
+if [ "$BUILD_DIR" == "" ]; then
+  BUILD_DIR="$DIR/build"
+fi
+
+if [ "$INSTALL_DIR" == "" ]; then
+  INSTALL_DIR="$DIR/install"
+fi
+
+if [ "$ERR_LOG" == "" ]; then
+  ERR_LOG=$DIR/build/error.log
+fi
+
+if [ "$BUILD_LOG" == "" ]; then
+  BUILD_LOG=$DIR/build/build.log
+fi
+
+[ -e "$BUILD_DIR" ] || mkdir -p $BUILD_DIR
+
+export JIT_PREFIX="$BUILD_DIR/deps/luajit"
+export ZLIB_PREFIX="$BUILD_DIR/deps/zlib"
+export PCRE_PREFIX="$BUILD_DIR/deps/pcre"
+
+export LUAJIT_INC="$JIT_PREFIX/usr/local/include/luajit-2.1"
+export LUAJIT_LIB="$JIT_PREFIX/usr/local/lib"
+export LUAJIT_BIN="$JIT_PREFIX/usr/local/bin/luajit-$LUAJIT_VERSION"
+
+export LD_LIBRARY_PATH="-L$PCRE_PREFIX/lib:$LUAJIT_LIB:$ZLIB_PREFIX/lib"
+export DYLD_LIBRARY_PATH=$LD_LIBRARY_PATH
+export PATH=/usr/local/bin:/bin:/usr/bin:$PATH
+
+ADDITIONAL_INCLUDES="-I$PCRE_PREFIX/include -I$ZLIB_PREFIX/include"
+ADDITIONAL_LIBS="-L$PCRE_PREFIX/lib -L$ZLIB_PREFIX/lib"
+
+function clean() {
+  rm -rf install  2>>$ERR_LOG
+  if [ $clean_all -eq 1 ]; then
+    rm -rf $BUILD_DIR  2>>$ERR_LOG
+  else
+    rm -rf $(ls -1d $BUILD_DIR/* 2>>$ERR_LOG | grep -v deps)    2>>$ERR_LOG
+  fi
+  if [ $download_all -eq 1 ]; then
+    rm -rf downloads 2>>$ERR_LOG
+  fi
+}
+
+doclean=0
+dobuild=0
+
+for i in "$@"
+do
+  if [ "$i" == "download" ]; then
+    download=1
+  fi
+
+  if [ "$i" == "download_all" ]; then
+    download=1
+    download_all=1
+  fi
+
+  if [ "$i" == "clean_all" ]; then
+    clean_all=1
+    doclean=1
+  fi
+
+  if [ "$i" == "build" ]; then
+    dobuild=1
+  fi
+
+  if [ "$i" == "build_only" ]; then
+    dobuild=1
+    build_only=1
+  fi
+
+  if [ "$i" == "clean" ]; then
+    doclean=1
+  fi
+
+  if [ "$i" == "compile" ]; then
+    compile=1
+  fi
+done
+
+if [ $doclean -eq 1 ]; then
+  clean
+fi
+
+if [ $download -eq 1 ] && [ $dobuild -eq 0 ]; then
+  download_only=1
+fi
+
+if [ $download -eq 0 ] && [ $dobuild -eq 0 ]; then
+    if [ $make_components -eq 0 ]; then 
+      exit 0
+    fi
+fi
+
+
+current_os=`uname`
+if [ "$current_os" = "Linux" ]; then
+  platform="linux"
+  arch=`uname -p`
+  shared="so"
+  if [ -e /etc/redhat-release ]; then
+    vendor='redhat'
+    ver=`cat /etc/redhat-release | sed -e 's#[^0-9]##g' -e 's#7[0-2]#73#'`
+    if [ $ver -lt 50 ]; then
+      os_release='4.0'
+    elif [ $ver -lt 60 ]; then
+      os_release='5.0'
+    elif [ $ver -lt 70 ]; then
+      os_release='6.0'
+    else
+      os_release='7.0'
+    fi
+    if [ "$arch" != "x86_64" ]; then
+      arch='i686'
+    fi
+    DISTR_NAME=$vendor-$platform-$os_release-$arch
+  else
+    vendor=$(uname -r)
+    DISTR_NAME=$vendor-$platform-$arch
+  fi
+  OPENSSL_FLAGS="linux-x86_64"
+fi
+if [ "$current_os" = "Darwin" ]; then
+  platform="macos"
+  arch=`uname -m`
+  vendor="apple"
+  shared="dylib"
+  OPENSSL_FLAGS="darwin64-x86_64-cc enable-ec_nistp_64_gcc_128 no-ssl2 no-ssl3"
+  CFLAGS="-arch x86_64"
+  DISTR_NAME=$vendor-$platform-$arch
+fi
+
+case $platform in
+  linux)
+    # platform has been recognized
+    ;;
+  macos)
+    # platform has been recognized
+    ;;
+  *)
+    echo "I do not recognize the platform '$platform'." | tee -a $BUILD_LOG
+    exit 1;;
+esac
+
+if [ -z "$BUILD_VERSION" ]; then
+    BUILD_VERSION="develop"
+fi
+
+function build_pcre() {
+  echo "Build PCRE" | tee -a $BUILD_LOG
+  cd pcre-$PCRE_VERSION
+  ./configure --prefix="$PCRE_PREFIX" --libdir="$PCRE_PREFIX/lib" >> $BUILD_LOG 2>>$ERR_LOG
+  make -j 8 >> $BUILD_LOG 2>>$ERR_LOG
   r=$?
   if [ $r -ne 0 ]; then
     exit $r
   fi
-  DESTDIR="$JIT_PREFIX" make install > /dev/null
+  make install >> $BUILD_LOG 2>>$ERR_LOG
+  cd ..
+}
+
+function build_zlib() {
+  echo "Build ZLIB" | tee -a $BUILD_LOG
+  cd zlib-$ZLIB_VERSION
+  ./configure --prefix="$ZLIB_PREFIX" --libdir="$ZLIB_PREFIX/lib" >> $BUILD_LOG 2>>$ERR_LOG
+  make -j 8 >> $BUILD_LOG 2>>$ERR_LOG
+  r=$?
+  if [ $r -ne 0 ]; then
+    exit $r
+  fi
+  make install >> $BUILD_LOG 2>>$ERR_LOG
+  cd ..
+}
+
+function build_luajit() {
+  echo "Build luajit" | tee -a $BUILD_LOG
+  cd luajit2
+  make >> $BUILD_LOG 2>>$ERR_LOG
+  r=$?
+  if [ $r -ne 0 ]; then
+    exit $r
+  fi
+  DESTDIR="$JIT_PREFIX" make install >> $BUILD_LOG 2>>$ERR_LOG
   cd ..
 }
 
 function build_cJSON() {
-  echo "Build cjson"
+  echo "Build cjson" | tee -a $BUILD_LOG
   cd lua-cjson
-  LUA_INCLUDE_DIR="$JIT_PREFIX/usr/local/include/luajit-2.1" LDFLAGS="-L$JIT_PREFIX/usr/local/lib -lluajit-5.1" make > /dev/null
+  LUA_INCLUDE_DIR="$JIT_PREFIX/usr/local/include/luajit-2.1" LDFLAGS="-L$JIT_PREFIX/usr/local/lib -lluajit-5.1" make >> $BUILD_LOG 2>>$ERR_LOG
   r=$?
   if [ $r -ne 0 ]; then
     exit $r
@@ -64,204 +226,217 @@ function build_cJSON() {
   cd ..
 }
 
-function build_debug() {
-  cd nginx-$VERSION$SUFFIX
-  echo "Configuring debug nginx-$VERSION$SUFFIX"
-  ./configure --prefix="$INSTALL_PREFIX/nginx-$VERSION$SUFFIX" \
-              --with-pcre=$PCRE_PREFIX \
-              --with-http_stub_status_module \
-              --with-stream \
-              --with-debug \
-              --with-http_auth_request_module \
-              --with-cc-opt="-O0 -DDDEBUG=0" \
+function build_int64() {
+  echo "Build int64" | tee -a $BUILD_LOG
+  cd lua_int64
+  LUA_INCLUDE_DIR="$JIT_PREFIX/usr/local/include/luajit-2.1" CFLAGS="$CFLAGS" LDFLAGS="-L$JIT_PREFIX/usr/local/lib -lluajit-5.1" make >> $BUILD_LOG 2>>$ERR_LOG
+  r=$?
+  if [ $r -ne 0 ]; then
+    exit $r
+  fi
+  cd ..
+}
+
+function build_release() {
+  cd nginx-$VERSION
+  make clean >> $BUILD_LOG 2>>$ERR_LOG
+  echo "Configuring release nginx-$VERSION" | tee -a $BUILD_LOG
+  ./configure --prefix="$INSTALL_DIR/nginx-$VERSION$SUFFIX" \
+              --with-cc-opt="-g -O0 $ADDITIONAL_INCLUDES -D_WITH_LUA_API -Wno-error=unused-value" \
+              --with-ld-opt="$ADDITIONAL_LIBS" \
               --add-module=../ngx_devel_kit \
-              --add-module=../../../lua-nginx-module \
-              --add-module=../echo-nginx-module \
-              --add-module=../memc-nginx-module >/dev/null 2>&1
-  r=$?
-  if [ $r -ne 0 ]; then
-    exit $r
-  fi
-
-  echo "Build debug nginx-$VERSION$SUFFIX"
-  make -j 8 > /dev/null 2>/dev/stderr
+              --add-module=../.. \
+              --add-module=../echo-nginx-module >> $BUILD_LOG 2>>$ERR_LOG
 
   r=$?
   if [ $r -ne 0 ]; then
     exit $r
   fi
-  make install > /dev/null
 
+  echo "Build release nginx-$VERSION" | tee -a $BUILD_LOG
+  make -j 8 >> $BUILD_LOG 2>>$ERR_LOG
+
+  r=$?
+  if [ $r -ne 0 ]; then
+    exit $r
+  fi
+  make install >> $BUILD_LOG 2>>$ERR_LOG
   cd ..
-}
-
-function download_module() {
-  if [ -e $DIR/../$2 ]; then
-    echo "Get $DIR/../$2"
-    dir=$(pwd)
-    cd $DIR/..
-    tar zcf $dir/$2.tar.gz $(ls -1d $2/* | grep -vE "(install$)|(build$)|(download$)|(.git$)")
-    cd $dir
-  else
-    if [ $download -eq 1 ] || [ ! -e $2.tar.gz ]; then
-      echo "Download $2 branch=$3"
-      curl -s -L -O https://github.com/$1/$2/archive/$3.zip
-      unzip -q $3.zip
-      mv $2-$3 $2
-      tar zcf $2.tar.gz $2
-      rm -rf $2 $3.zip
-    fi
-  fi
 }
 
 function gitclone() {
-  git clone $1 > /dev/null 2> /tmp/err
+  LD_LIBRARY_PATH="" git clone $1 >> $BUILD_LOG 2> /tmp/err
   if [ $? -ne 0 ]; then
     cat /tmp/err
+    exit 1
   fi
 }
 
-function download_nginx() {
-  if [ $download -eq 1 ] || [ ! -e nginx-$VERSION.tar.gz ]; then
-    echo "Download nginx-$VERSION"
-    curl -s -L -O http://nginx.org/download/nginx-$VERSION.tar.gz
-  else
-    echo "Get nginx-$VERSION.tar.gz"
+function gitcheckout() {
+  git checkout $1 >> $BUILD_LOG 2> /tmp/err
+  if [ $? -ne 0 ]; then
+    cat /tmp/err
+    exit 1
   fi
 }
 
-function download_luajit() {
-  if [ $download -eq 1 ] || [ ! -e LuaJIT-$LUAJIT_VERSION.tar.gz ]; then
-    echo "Download LuaJIT-$LUAJIT_VERSION"
-    curl -s -L -O http://luajit.org/download/LuaJIT-$LUAJIT_VERSION.tar.gz
+function download_module() {
+  if [ $download -eq 1 ] || [ ! -e $3.tar.gz ]; then
+    if [ $download_all -eq 1 ] || [ ! -e $3.tar.gz ]; then
+      echo "Download $1/$2/$3.git from=$4" | tee -a $BUILD_LOG
+      gitclone $1/$2/$3.git
+      echo "$1/$2/$3.git" > $3.log
+      echo >> $3.log
+      cd $3
+      gitcheckout $4
+      echo $4" : "$(git log -1 --oneline | awk '{print $1}') >> ../$3.log
+      echo >> ../$3.log
+      git log -1 | grep -E "(^[Cc]ommit)|(^[Aa]uthor)|(^[Dd]ate)" >> ../$3.log
+      cd ..
+      tar zcf $3.tar.gz $3
+      rm -rf $3
+    else
+      echo "Get $3" | tee -a $BUILD_LOG
+    fi
   else
-    echo "Get LuaJIT-$LUAJIT_VERSION.tar.gz"
+    echo "Get $3" | tee -a $BUILD_LOG
   fi
 }
 
-function download_pcre() {
-  if [ $download -eq 1 ] || [ ! -e pcre-$PCRE_VERSION.tar.gz ]; then
-    echo "Download PCRE-$PCRE_VERSION"
-    curl -s -L -O http://ftp.cs.stanford.edu/pub/exim/pcre/pcre-$PCRE_VERSION.tar.gz
+function download_dep() {
+  if [ $download -eq 1 ] || [ ! -e $2-$3.tar.gz ]; then
+    if [ $download_all -eq 1 ] || [ ! -e $2-$3.tar.gz ]; then
+      echo "Download $2-$3.$4" | tee -a $BUILD_LOG
+      LD_LIBRARY_PATH="" curl -s -L -o $2-$3.tar.gz $1/$2-$3.$4
+      echo "$1/$2-$3.$4" > $2.log
+    else
+      echo "Get $2-$3.tar.gz" | tee -a $BUILD_LOG
+    fi
   else
-    echo "Get pcre-$PCRE_VERSION.tar.gz"
+    echo "Get $2-$3.tar.gz" | tee -a $BUILD_LOG
   fi
 }
 
 function extract_downloads() {
-  cd download
+  cd downloads
 
   for d in $(ls -1 *.tar.gz)
   do
-    echo "Extracting $d"
-    tar zxf $d -C ../build --no-overwrite-dir --keep-old-files 2>/dev/null
+    echo "Extracting $d" | tee -a $BUILD_LOG
+    tar zxf $d -C $BUILD_DIR --keep-old-files 2>>$ERR_LOG
   done
 
   cd ..
 }
 
 function download() {
-  mkdir build                2>/dev/null
-  mkdir build/deps           2>/dev/null
+  mkdir -p $BUILD_DIR        2>>$ERR_LOG
+  mkdir $BUILD_DIR/deps      2>>$ERR_LOG
 
-  mkdir download             2>/dev/null
-  mkdir download/lua_modules 2>/dev/null
+  mkdir downloads             2>>$ERR_LOG
+  mkdir downloads/lua_modules 2>>$ERR_LOG
 
-  cd download
+  cd downloads
 
-  download_luajit
-  download_pcre
-  download_nginx
+  download_dep http://nginx.org/download                                           nginx     $VERSION           tar.gz
+  download_dep http://ftp.cs.stanford.edu/pub/exim/pcre                            pcre      $PCRE_VERSION      tar.gz
+  download_dep http://zlib.net                                                     zlib      $ZLIB_VERSION      tar.gz
 
-  download_module simpl       ngx_devel_kit                    master
-  download_module ZigzagAK    lua-cjson                        mixed
-  download_module openresty   echo-nginx-module                master
-  download_module openresty   memc-nginx-module                master
+  download_module https://github.com      simpl       ngx_devel_kit                    master
+  download_module https://github.com      openresty   lua-cjson                        master
+  download_module https://github.com      openresty   echo-nginx-module                master
+  download_module https://github.com      openresty   luajit2                          v2.1-agentzh
 
   cd ..
 }
 
 function install_file() {
-  echo "Install $1"
-  if [ ! -e "$INSTALL_PREFIX/nginx-$VERSION$SUFFIX/$2" ]; then
-    mkdir -p "$INSTALL_PREFIX/nginx-$VERSION$SUFFIX/$2"
+  echo "Install $1" | tee -a $BUILD_LOG
+  if [ ! -e "$INSTALL_DIR/nginx-$VERSION$SUFFIX/$2" ]; then
+    mkdir -p "$INSTALL_DIR/nginx-$VERSION$SUFFIX/$2"
   fi
-  cp -r $3 $1 "$INSTALL_PREFIX/nginx-$VERSION$SUFFIX/$2/"
+  if [ "$4" == "" ]; then
+    if [ "$3" == "" ]; then
+      if [ -d "$1" ]; then
+        cp -rL $1 "$INSTALL_DIR/nginx-$VERSION$SUFFIX/$2/"
+      else
+        cp -r $1 "$INSTALL_DIR/nginx-$VERSION$SUFFIX/$2/"
+      fi
+    else
+      if [ -d "$1" ]; then
+        cp -rL $1 "$INSTALL_DIR/nginx-$VERSION$SUFFIX/$2/$3"
+      else
+        cp -r $1 "$INSTALL_DIR/nginx-$VERSION$SUFFIX/$2/$3"
+      fi
+    fi
+  else
+    echo $4 > "$INSTALL_DIR/nginx-$VERSION$SUFFIX/$2/$3"
+  fi
+}
+
+function install_gzip() {
+  echo "Install $1" | tee -a $BUILD_LOG
+  if [ ! -e "$INSTALL_DIR/nginx-$VERSION$SUFFIX/$2" ]; then
+    mkdir -p "$INSTALL_DIR/nginx-$VERSION$SUFFIX/$2"
+  fi
+  if [ "$4" == "" ]; then
+    if [ "$3" == "" ]; then
+      tar zxf $1 -C "$INSTALL_DIR/nginx-$VERSION$SUFFIX/$2/"
+    else
+      tar zxf $1 -C "$INSTALL_DIR/nginx-$VERSION$SUFFIX/$2/$3"
+    fi
+  else
+    echo $4 > "$INSTALL_DIR/nginx-$VERSION$SUFFIX/$2/$3"
+  fi
 }
 
 function install_files() {
   for f in $(ls $1)
   do
-    install_file $f $2 $3
+    install_file $f $2
   done
 }
 
 function build() {
-  cd build
+  cd $BUILD_DIR
 
   if [ $build_deps -eq 1 ] || [ ! -e deps/luajit ]; then
     build_luajit
   fi
+  if [ $build_deps -eq 1 ] || [ ! -e deps/zlib ]; then
+    build_zlib
+  fi
+  if [ $build_deps -eq 1 ] || [ ! -e deps/pcre ]; then
+    build_pcre
+  fi
 
   build_cJSON
 
-  make clean > /dev/null 2>&1
-  build_debug
+  build_release
 
-  install_file  "$JIT_PREFIX/usr/local/lib"           .
-  install_file  lua-cjson/cjson.so                    lib/lua/5.1
+  install_file  "$JIT_PREFIX/usr/local/lib/*.$shared*"       lib
+  install_file  "lua-cjson/cjson.so"                         lib/lua/5.1
 
-  cd ..
+  install_files "$ZLIB_PREFIX/lib/libz.$shared*"             lib
+
+  install_files "$PCRE_PREFIX/lib/libpcre.$shared*"          lib
+  install_files "$PCRE_PREFIX/lib/libpcreposix.$shared*"     lib
+
+  chmod 755 $(find $INSTALL_DIR/nginx-$VERSION$SUFFIX/lib -name "*.$shared*")
+
+  cd $DIR
 }
 
-clean
+if [ $build_only -eq 0 ]; then
+  clean
+fi
 download
-extract_downloads
-build
-
-function install_resty_module() {
-  if [ -e $DIR/../$2 ]; then
-    echo "Get $DIR/../$2"
-    dir=$(pwd)
-    cd $DIR/..
-    zip -qr $dir/$2.zip $(ls -1d $2/* | grep -vE "(install$)|(build$)|(download$)|(.git$)")
-    cd $dir
-  else
-    if [ $6 -eq 1 ] || [ ! -e $2-$5.zip ] ; then
-      echo "Download $2 branch=$5"
-      rm -rf $2-$5 2>/dev/null
-      curl -s -L -O https://github.com/$1/$2/archive/$5.zip
-      mv $5.zip $2-$5.zip
-    else
-      echo "Get $2-$5"
-    fi
+if [ $download_only -eq 0 ]; then
+  if [ $build_only -eq 0 ]; then
+    extract_downloads
   fi
-  echo "Install $2/$3"
-  if [ ! -e "$INSTALL_PREFIX/nginx-$VERSION$SUFFIX/$4" ]; then
-    mkdir -p "$INSTALL_PREFIX/nginx-$VERSION$SUFFIX/$4"
-  fi
-  if [ -e $2-$5.zip ]; then
-    unzip -q $2-$5.zip
-    cp -r $2-$5/$3 "$INSTALL_PREFIX/nginx-$VERSION$SUFFIX/$4/"
-    rm -rf $2-$5
-  elif [ -e $2-$5.tar.gz ]; then
-    tar zxf $2-$5.tar.gz
-    cp -r $2-$5/$3 "$INSTALL_PREFIX/nginx-$VERSION$SUFFIX/$4/"
-    rm -rf $2-$5
-  elif [ -e $2.zip ]; then
-    unzip -q $2.zip
-    cp -r $2/$3 "$INSTALL_PREFIX/nginx-$VERSION$SUFFIX/$4/"
-    rm -rf $2
-  elif [ -e $2.tar.gz ]; then
-    tar zxf $2.tar.gz
-    cp -r $2/$3 "$INSTALL_PREFIX/nginx-$VERSION$SUFFIX/$4/"
-    rm -rf $2
-  fi
-}
-
-function make_dir() {
-  mkdir $INSTALL_PREFIX/nginx-$VERSION$SUFFIX/$1
-}
+  build
+fi
 
 cd "$DIR"
 
@@ -270,7 +445,7 @@ kernel_version=$(uname -r)
 
 cd install
 
-tar zcvf nginx-$VERSION$SUFFIX-$kernel_name-$kernel_version.tar.gz nginx-$VERSION$SUFFIX
+tar zcvf nginx-$VERSION$SUFFIX.tar.gz nginx-$VERSION$SUFFIX
 rm -rf nginx-$VERSION$SUFFIX
 
 cd ..

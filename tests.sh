@@ -17,7 +17,7 @@ export LUA_CPATH=$DIR/install/tmp/$folder/lib/lua/5.1/cjson.so
 
 ret=0
 
-for t in $(ls tt/*.t)
+for t in $(ls t/*.t)
 do
   echo "Tests : "$t
   prove $t
