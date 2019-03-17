@@ -32,26 +32,9 @@ typedef struct {
 
 
 typedef struct {
-    u_char                       color;
-    uint8_t                      value_type;
-    ngx_str_t                    value;
-    void                        *free;
-    void                        *lua;
-    u_char                       data[1];
-} ngx_http_lua_shdict_zset_node_t;
-
-typedef struct {
-    ngx_rbtree_t                  rbtree;
-    ngx_rbtree_node_t             sentinel;
-} ngx_http_lua_shdict_zset_t;
-
-typedef struct {
     ngx_rbtree_t                  rbtree;
     ngx_rbtree_node_t             sentinel;
     ngx_queue_t                   lru_queue;
-    ngx_msec_t                    last;
-    uint32_t                      count[2];
-    uint32_t                      rps;
 } ngx_http_lua_shdict_shctx_t;
 
 
@@ -61,7 +44,6 @@ typedef struct {
     ngx_str_t                     name;
     ngx_http_lua_main_conf_t     *main_conf;
     ngx_log_t                    *log;
-    int                           mt;
 } ngx_http_lua_shdict_ctx_t;
 
 
