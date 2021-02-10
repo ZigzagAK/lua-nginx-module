@@ -12,7 +12,7 @@ our $StapScript = $t::StapThread::StapScript;
 
 repeat_each(2);
 
-plan tests => repeat_each() * (blocks() * 8 + 72);
+plan tests => repeat_each() * (blocks() * 8 + 61);
 
 #no_diff();
 no_long_string();
@@ -72,6 +72,18 @@ qr/\[lua\] content_by_lua\(nginx\.conf:\d+\):\d+: elapsed: 0\.0(?:4[4-9]|5[0-6])
 "lua ngx.timer expired",
 "http lua close fake http connection",
 "timer prematurely expired: false",
+]
+--- grep_error_log eval: qr/lua caching unused lua thread|lua reusing cached lua thread/
+--- grep_error_log_out eval
+[
+    "lua caching unused lua thread
+lua caching unused lua thread
+",
+    "lua reusing cached lua thread
+lua reusing cached lua thread
+lua caching unused lua thread
+lua caching unused lua thread
+",
 ]
 
 
@@ -218,8 +230,21 @@ qr/\[lua\] content_by_lua\(nginx\.conf:\d+\):\d+: elapsed: 0\.(?:1[4-9]|2[0-6]?)
 === TEST 5: tcp cosocket in timer handler (short connections)
 --- config
     server_tokens off;
+
+    location = /gc {
+        content_by_lua_block {
+            local c = collectgarbage("count")
+            ngx.say("before: ", c)
+            collectgarbage("collect")
+            c = collectgarbage("count")
+            ngx.say("after: ", c)
+        }
+    }
+
     location = /t {
         content_by_lua '
+            collectgarbage()
+            -- ngx.say("gc size: ", collectgarbage("count"))
             local begin = ngx.now()
             local function fail(...)
                 ngx.log(ngx.ERR, ...)
@@ -269,6 +294,7 @@ qr/\[lua\] content_by_lua\(nginx\.conf:\d+\):\d+: elapsed: 0\.(?:1[4-9]|2[0-6]?)
                 ngx.say("failed to set timer: ", err)
                 return
             end
+            -- ngx.sleep(0.1)
             ngx.say("registered timer")
         ';
     }
@@ -1880,6 +1906,7 @@ trace: [m][f][g]
 --- config
     location /t {
         content_by_lua '
+            collectgarbage()
             local s = ""
 
             local function fail(...)
@@ -1932,7 +1959,7 @@ registered timer
 
 --- error_log eval
 [
-qr/\[alert\] .*? 1 lua_max_running_timers are not enough/,
+qr/\[alert\] .*? lua failed to run timer with function defined at =content_by_lua\(nginx.conf:\d+\):11: 1 lua_max_running_timers are not enough/,
 "lua ngx.timer expired",
 "http lua close fake http connection",
 ]
@@ -2193,3 +2220,178 @@ ok
 --- error_log
 Bad bad bad
 --- skip_nginx: 4: < 1.7.1
+
+
+
+=== TEST 33: log function location when failed to run a timer
+--- http_config
+    lua_max_running_timers 1;
+--- config
+    location /t {
+        content_by_lua_block {
+            local function g()
+                ngx.sleep(0.01)
+            end
+
+            local function f()
+                ngx.sleep(0.01)
+            end
+
+            local ok, err = ngx.timer.at(0, f)
+            if not ok then
+                ngx.say("failed to create timer f: ", err)
+                return
+            end
+
+            local ok, err = ngx.timer.at(0, g)
+            if not ok then
+                ngx.say("failed to create timer g: ", err)
+                return
+            end
+
+            ngx.say("ok")
+        }
+    }
+--- request
+GET /t
+--- response_body
+ok
+--- wait: 0.1
+--- error_log eval
+qr/\[alert\] .*? lua failed to run timer with function defined at =content_by_lua\(nginx.conf:\d+\):2: 1 lua_max_running_timers are not enough/
+--- no_error_log
+[crit]
+[error]
+
+
+
+=== TEST 34: log function location when failed to run a timer (anonymous function)
+--- http_config
+    lua_max_running_timers 1;
+--- config
+    location /t {
+        content_by_lua_block {
+            local function f()
+                ngx.sleep(0.01)
+            end
+
+            local ok, err = ngx.timer.at(0, f)
+            if not ok then
+                ngx.say("failed to set timer f: ", err)
+                return
+            end
+
+            local ok, err = ngx.timer.at(0, function()
+                ngx.sleep(0.01)
+            end)
+
+            if not ok then
+                ngx.say("failed to set timer: ", err)
+                return
+            end
+
+            ngx.say("ok")
+        }
+    }
+--- request
+GET /t
+--- response_body
+ok
+--- wait: 0.1
+--- error_log eval
+qr/\[alert\] .*? lua failed to run timer with function defined at =content_by_lua\(nginx.conf:\d+\):12: 1 lua_max_running_timers are not enough/
+--- no_error_log
+[crit]
+[error]
+
+
+
+=== TEST 35: log function location when failed to run a timer (lua file)
+--- user_files
+>>> test.lua
+local _M = {}
+
+function _M.run()
+    ngx.sleep(0.01)
+end
+
+return _M
+--- http_config
+    lua_package_path '$TEST_NGINX_HTML_DIR/?.lua;./?.lua;;';
+    lua_max_running_timers 1;
+--- config
+    location /t {
+        content_by_lua_block {
+            local test = require "test"
+
+            local ok, err = ngx.timer.at(0, test.run)
+            if not ok then
+                ngx.say("failed to set timer: ", err)
+                return
+            end
+
+            local ok, err = ngx.timer.at(0, test.run)
+            if not ok then
+                ngx.say("failed to set timer: ", err)
+                return
+            end
+
+            ngx.say("ok")
+        }
+    }
+--- request
+GET /t
+--- response_body
+ok
+--- wait: 0.1
+--- no_error_log
+[crit]
+[error]
+--- error_log eval
+qr/\[alert\] .*? lua failed to run timer with function defined at @.+\/test.lua:3: 1 lua_max_running_timers are not enough/
+
+
+
+=== TEST 36: log function location when failed to run a timer with args (lua file)
+--- user_files
+>>> test.lua
+local _M = {}
+
+function _M.run(premature, arg)
+    ngx.sleep(0.01)
+end
+
+return _M
+--- http_config
+    lua_package_path '$TEST_NGINX_HTML_DIR/?.lua;./?.lua;;';
+    lua_max_running_timers 1;
+--- config
+    location /t {
+        content_by_lua_block {
+            local test = require "test"
+
+            local ok, err = ngx.timer.at(0, test.run, "arg")
+            if not ok then
+                ngx.say("failed to set timer: ", err)
+                return
+            end
+
+            local ok, err = ngx.timer.at(0, test.run, "arg")
+            if not ok then
+                ngx.say("failed to set timer: ", err)
+                return
+            end
+
+            ngx.say("ok")
+        }
+    }
+--- request
+GET /t
+--- response_body
+ok
+--- wait: 0.1
+--- no_error_log
+[crit]
+[error]
+--- error_log eval
+qr/\[alert\] .*? lua failed to run timer with function defined at @.+\/test.lua:3: 1 lua_max_running_timers are not enough/

@@ -21,7 +21,7 @@ DIR="$(pwd)"
 DIAG_DIR="diag"
 VCS_PATH=${DIR%/*/*}
 
-VERSION="1.15.6"
+VERSION="1.19.6"
 PCRE_VERSION="8.40"
 ZLIB_VERSION="1.2.11"
 
@@ -241,7 +241,8 @@ function build_release() {
   cd nginx-$VERSION
   make clean >> $BUILD_LOG 2>>$ERR_LOG
   echo "Configuring release nginx-$VERSION" | tee -a $BUILD_LOG
-  ./configure --prefix="$INSTALL_DIR/nginx-$VERSION$SUFFIX" \
+  ./configure --with-debug \
+              --prefix="$INSTALL_DIR/nginx-$VERSION$SUFFIX" \
               --with-cc-opt="-g -O0 $ADDITIONAL_INCLUDES -D_WITH_LUA_API -Wno-error=unused-value" \
               --with-ld-opt="$ADDITIONAL_LIBS" \
               --add-module=../ngx_devel_kit \
@@ -346,6 +347,8 @@ function download() {
   download_module https://github.com      openresty   lua-cjson                        master
   download_module https://github.com      openresty   echo-nginx-module                master
   download_module https://github.com      openresty   luajit2                          v2.1-agentzh
+  download_module https://github.com      openresty   lua-resty-core                   v0.1.21
+  download_module https://github.com      openresty   lua-resty-lrucache               v0.10
 
   cd ..
 }
@@ -421,6 +424,11 @@ function build() {
 
   install_files "$PCRE_PREFIX/lib/libpcre.$shared*"          lib
   install_files "$PCRE_PREFIX/lib/libpcreposix.$shared*"     lib
+
+  install_gzip  "$DIR/downloads/lua-resty-core.tar.gz"       ..
+  install_gzip  "$DIR/downloads/lua-resty-lrucache.tar.gz"   ..
+  install_file  "$INSTALL_DIR/lua-resty-core/lib"            .
+  install_file  "$INSTALL_DIR/lua-resty-lrucache/lib"        .
 
   chmod 755 $(find $INSTALL_DIR/nginx-$VERSION$SUFFIX/lib -name "*.$shared*")
 

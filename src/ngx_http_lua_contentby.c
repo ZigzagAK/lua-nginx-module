@@ -79,6 +79,8 @@ ngx_http_lua_content_by_chunk(lua_State *L, ngx_http_request_t *r)
     ctx->cur_co_ctx->co_top = 1;
 #endif
 
+    ngx_http_lua_attach_co_ctx_to_L(co, ctx->cur_co_ctx);
+
     /*  {{{ register request cleanup hooks */
     if (ctx->cleanup == NULL) {
         cln = ngx_http_cleanup_add(r, 0);
@@ -202,10 +204,6 @@ ngx_http_lua_content_handler(ngx_http_request_t *r)
                                         ngx_http_lua_content_phase_post_read);
 
         if (rc == NGX_ERROR || rc >= NGX_HTTP_SPECIAL_RESPONSE) {
-#if (nginx_version < 1002006) ||                                             \
-        (nginx_version >= 1003000 && nginx_version < 1003009)
-            r->main->count--;
-#endif
             return rc;
         }
 
@@ -271,6 +269,7 @@ ngx_http_lua_content_handler_file(ngx_http_request_t *r)
 
     /*  load Lua script file (w/ cache)        sp = 1 */
     rc = ngx_http_lua_cache_loadfile(r->connection->log, L, script_path,
+                                     &llcf->content_src_ref,
                                      llcf->content_src_key);
     if (rc != NGX_OK) {
         if (rc < NGX_HTTP_SPECIAL_RESPONSE) {
@@ -302,6 +301,7 @@ ngx_http_lua_content_handler_inline(ngx_http_request_t *r)
     rc = ngx_http_lua_cache_loadbuffer(r->connection->log, L,
                                        llcf->content_src.value.data,
                                        llcf->content_src.value.len,
+                                       &llcf->content_src_ref,
                                        llcf->content_src_key,
                                        (const char *)
                                        llcf->content_chunkname);

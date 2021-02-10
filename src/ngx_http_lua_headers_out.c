@@ -106,7 +106,7 @@ static ngx_http_lua_set_header_t  ngx_http_lua_set_handlers[] = {
                  offsetof(ngx_http_headers_out_t, cache_control),
                  ngx_http_set_builtin_multi_header },
 
-#if defined(nginx_version) && nginx_version >= 1013009
+#if (nginx_version >= 1013009)
     { ngx_string("Link"),
                  offsetof(ngx_http_headers_out_t, link),
                  ngx_http_set_builtin_multi_header },
@@ -450,7 +450,7 @@ ngx_http_set_content_length_header(ngx_http_request_t *r,
         return ngx_http_clear_content_length_header(r, hv, value);
     }
 
-    len = ngx_atosz(value->data, value->len);
+    len = ngx_atoof(value->data, value->len);
     if (len == NGX_ERROR) {
         return NGX_ERROR;
     }
@@ -490,6 +490,14 @@ ngx_http_lua_set_output_header(ngx_http_request_t *r, ngx_http_lua_ctx_t *ctx,
     ngx_uint_t                        i;
 
     dd("set header value: %.*s", (int) value.len, value.data);
+
+    if (ngx_http_lua_copy_escaped_header(r, &key, 1) != NGX_OK) {
+        return NGX_ERROR;
+    }
+
+    if (ngx_http_lua_copy_escaped_header(r, &value, 0) != NGX_OK) {
+        return NGX_ERROR;
+    }
 
     hv.hash = ngx_hash_key_lc(key.data, key.len);
     hv.key = key;

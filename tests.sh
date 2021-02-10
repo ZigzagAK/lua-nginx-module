@@ -14,19 +14,25 @@ export PATH=$DIR/install/tmp/$folder/sbin:$PATH
 export LD_LIBRARY_PATH=$DIR/install/tmp/$folder/lib
 
 export LUA_CPATH=$DIR/install/tmp/$folder/lib/lua/5.1/cjson.so
+export LUA_PATH="$DIR/install/tmp/$folder/lib/?.lua;;"
 
 ret=0
 
-for t in $(ls t/*.t)
+cd t
+
+for t in $(find . -name *.t -print)
 do
   echo "Tests : "$t
-  prove $t
+  rm -rf ${t}.test
+  mkdir -p ${t}.test/t
+  cd ${t}.test
+  prove ../../$t
   if [ $? -ne 0 ]; then
     ret=$?
   fi
+  cd ../..
 done
 
-rm -rf t/servroot
 rm -rf install/tmp
 
 exit $ret

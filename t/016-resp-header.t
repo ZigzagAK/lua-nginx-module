@@ -8,7 +8,7 @@ use Test::Nginx::Socket::Lua;
 
 repeat_each(2);
 
-plan tests => repeat_each() * (blocks() * 3 + 59);
+plan tests => repeat_each() * (blocks() * 3 + 79);
 
 #no_diff();
 no_long_string();
@@ -51,7 +51,7 @@ Content-Type: text/html
 
 
 
-=== TEST 3: set response content-type header
+=== TEST 3: set response content-length header
 --- config
     location /read {
         content_by_lua '
@@ -1963,3 +1963,181 @@ foo
 Content-Type: application/json
 --- no_error_log
 [error]
+
+
+
+=== TEST 87: unsafe header value (with '\r')
+--- config
+    location = /t {
+        content_by_lua_block {
+            ngx.header.header = "value\rfoo:bar\nbar:foo"
+            ngx.say("foo")
+        }
+    }
+--- request
+GET /t
+--- response_headers
+header: value%0Dfoo:bar%0Abar:foo
+foo:
+bar:
+--- no_error_log
+[error]
+
+
+
+=== TEST 88: unsafe header value (with '\n')
+--- config
+    location = /t {
+        content_by_lua_block {
+            ngx.header.header = "value\nfoo:bar\rbar:foo"
+            ngx.say("foo")
+        }
+    }
+--- request
+GET /t
+--- response_headers
+header: value%0Afoo:bar%0Dbar:foo
+foo:
+bar:
+--- no_error_log
+[error]
+
+
+
+=== TEST 89: unsafe header name (with '\r')
+--- config
+    location = /t {
+        content_by_lua_block {
+            ngx.header["header: value\rfoo:bar\nbar:foo"] = "xx"
+            ngx.say("foo")
+        }
+    }
+--- request
+GET /t
+--- response_headers
+header%3A%20value%0Dfoo%3Abar%0Abar%3Afoo: xx
+header:
+foo:
+bar:
+--- no_error_log
+[error]
+
+
+
+=== TEST 90: unsafe header name (with '\n')
+--- config
+    location = /t {
+        content_by_lua_block {
+            ngx.header["header: value\nfoo:bar\rbar:foo"] = "xx"
+            ngx.say("foo")
+        }
+    }
+--- request
+GET /t
+--- response_headers
+header%3A%20value%0Afoo%3Abar%0Dbar%3Afoo: xx
+header:
+foo:
+bar:
+--- no_error_log
+[error]
+
+
+
+=== TEST 91: unsafe header name (with prefix '\r')
+--- config
+    location = /t {
+        content_by_lua_block {
+            ngx.header["\rheader: value\rfoo:bar\nbar:foo"] = "xx"
+            ngx.say("foo")
+        }
+    }
+--- request
+GET /t
+--- response_headers
+%0Dheader%3A%20value%0Dfoo%3Abar%0Abar%3Afoo: xx
+header:
+foo:
+bar:
+--- no_error_log
+[error]
+
+
+
+=== TEST 92: unsafe header name (with prefix '\n')
+--- config
+    location = /t {
+        content_by_lua_block {
+            ngx.header["\nheader: value\nfoo:bar\rbar:foo"] = "xx"
+            ngx.say("foo")
+        }
+    }
+--- request
+GET /t
+--- response_headers
+%0Aheader%3A%20value%0Afoo%3Abar%0Dbar%3Afoo: xx
+header:
+foo:
+bar:
+--- no_error_log
+[error]
+
+
+
+=== TEST 93: multiple unsafe header values (with '\n' and '\r')
+--- config
+    location = /t {
+        content_by_lua_block {
+            ngx.header["foo"] = {
+                "foo\nxx:bar",
+                "bar\rxxx:foo",
+            }
+            ngx.say("foo")
+        }
+    }
+--- request
+GET /t
+--- response_headers
+xx:
+xxx:
+--- raw_response_headers_like chomp
+foo: foo%0Axx:bar\r\nfoo: bar%0Dxxx:foo\r\n
+--- no_error_log
+[error]
+
+
+
+=== TEST 94: fix negative content-length number(#1791)
+--- config
+    location = /big-upstream {
+        content_by_lua_block {
+            ngx.header['Content-Length'] = math.pow(2, 33) - 1
+            ngx.say('hi')
+        }
+    }
+
+    location = /t {
+        proxy_pass http://127.0.0.1:$TEST_NGINX_SERVER_PORT/big-upstream;
+        proxy_buffering off;
+
+        header_filter_by_lua_block {
+            local hs, err = ngx.resp.get_headers()
+            if err then
+                ngx.log(ngx.ERR, "err: ", err)
+                return ngx.exit(500)
+            end
+
+            print("my Content-Length: ", hs["Content-Length"])
+
+            ngx.header['Content-Length'] = 3
+        }
+    }
+--- request
+    GET /t
+--- response_body
+hi
+--- no_error_log
+[alert]
+--- error_log
+my Content-Length: 8589934591
+upstream prematurely closed connection while sending to client

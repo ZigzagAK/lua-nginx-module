@@ -4,7 +4,7 @@ use Test::Nginx::Socket::Lua;
 
 repeat_each(2);
 
-plan tests => repeat_each() * 219;
+plan tests => repeat_each() * 231;
 
 our $HtmlDir = html_dir;
 
@@ -1493,7 +1493,7 @@ GET /t
 
 
 
-=== TEST 25: send tables of string fragments
+=== TEST 25: send tables of string fragments (with integers too)
 --- config
     server_tokens off;
     location /t {
@@ -3029,7 +3029,7 @@ qr/runtime error: content_by_lua\(nginx\.conf:\d+\):16: bad request/
 --- user_files
 >>> myfoo.lua
 local sock = ngx.socket.tcp()
-local ok, err = sock:connect("agentzh.org")
+local ok, err = sock:connect("agentzh.org", 12345)
 if not ok then
     ngx.log(ngx.ERR, "failed to connect: ", err)
     return
@@ -3059,7 +3059,7 @@ runtime error: attempt to yield across C-call boundary
             end
             local function err()
                 local sock = ngx.socket.tcp()
-                local ok, err = sock:connect("agentzh.org")
+                local ok, err = sock:connect("agentzh.org", 12345)
                 if not ok then
                     ngx.log(ngx.ERR, "failed to connect: ", err)
                     return
@@ -3643,7 +3643,45 @@ lua http cleanup reuse
 
 
 
-=== TEST 60: options_table is nil
+=== TEST 60: setkeepalive on socket already shutdown
+--- config
+    location /t {
+        set $port $TEST_NGINX_MEMCACHED_PORT;
+
+        content_by_lua_block {
+            local sock = ngx.socket.tcp()
+            local port = ngx.var.port
+
+            local ok, err = sock:connect("127.0.0.1", port)
+            if not ok then
+                ngx.say("failed to connect: ", err)
+                return
+            end
+
+            ngx.say("connected: ", ok)
+
+            local ok, err = sock:close()
+            if not ok then
+                ngx.log(ngx.ERR, "failed to close socket: ", err)
+                return
+            end
+
+            local ok, err = sock:setkeepalive()
+            if not ok then
+                ngx.log(ngx.ERR, "failed to setkeepalive: ", err)
+            end
+        }
+    }
+--- request
+GET /t
+--- response_body
+connected: 1
+--- error_log
+failed to setkeepalive: closed
+
+
+
+=== TEST 61: options_table is nil
 --- config
     location /t {
         set $port $TEST_NGINX_MEMCACHED_PORT;
@@ -3693,7 +3731,7 @@ close: 1 nil
 
 
 
-=== TEST 61: resolver send query failing immediately in connect()
+=== TEST 62: resolver send query failing immediately in connect()
 this case did not clear coctx->cleanup properly and would lead to memory invalid accesses.
 
 this test case requires the following iptables rule to work properly:
@@ -3730,7 +3768,7 @@ qr{\[alert\] .*? send\(\) failed \(\d+: Operation not permitted\) while resolvin
 
 
 
-=== TEST 62: the upper bound of port range should be 2^16 - 1
+=== TEST 63: the upper bound of port range should be 2^16 - 1
 --- config
     location /t {
         content_by_lua_block {
@@ -3749,7 +3787,7 @@ failed to connect: bad port number: 65536
 
 
 
-=== TEST 63: send boolean and nil
+=== TEST 64: send boolean and nil
 --- config
     location /t {
         set $port $TEST_NGINX_SERVER_PORT;
@@ -3811,7 +3849,7 @@ received: truefalsenil
 
 
 
-=== TEST 64: receiveany method in cosocket
+=== TEST 65: receiveany method in cosocket
 --- config
     server_tokens off;
     location = /t {
@@ -3900,7 +3938,7 @@ lua tcp socket read any
 
 
 
-=== TEST 65: receiveany send data after read side closed
+=== TEST 66: receiveany send data after read side closed
 --- config
     server_tokens off;
     location = /t {
@@ -3944,7 +3982,7 @@ GET /t
 
 
 
-=== TEST 66: receiveany with limited, max <= 0
+=== TEST 67: receiveany with limited, max <= 0
 --- config
     location = /t {
         set $port $TEST_NGINX_SERVER_PORT;
@@ -3980,7 +4018,7 @@ GET /t
 
 
 
-=== TEST 67: receiveany with limited, max is larger than data
+=== TEST 68: receiveany with limited, max is larger than data
 --- config
     server_tokens off;
     location = /t {
@@ -4049,7 +4087,7 @@ lua tcp socket calling receiveany() method to read at most 128 bytes
 
 
 
-=== TEST 68: receiveany with limited, max is smaller than data
+=== TEST 69: receiveany with limited, max is smaller than data
 --- config
     server_tokens off;
     location = /t {
@@ -4120,3 +4158,212 @@ orld
 [error]
 --- error_log
 lua tcp socket calling receiveany() method to read at most 7 bytes
+
+
+
+=== TEST 70: send tables of string fragments (with floating point number too)
+--- config
+    server_tokens off;
+    location /t {
+        #set $port 5000;
+        set $port $TEST_NGINX_SERVER_PORT;
+
+        content_by_lua_block {
+            local sock = ngx.socket.tcp()
+            local port = ngx.var.port
+            local ok, err = sock:connect("127.0.0.1", port)
+            if not ok then
+                ngx.say("failed to connect: ", err)
+                return
+            end
+
+            ngx.say("connected: ", ok)
+
+            local req = {"GET", " ", "/foo", " HTTP/", 1, ".", 0, "\r\n",
+                         "Host: localhost\r\n", "Connection: close\r\n",
+                         "Foo: ", 3.1415926, "\r\n",
+                         "\r\n"}
+            -- req = "OK"
+
+            local bytes, err = sock:send(req)
+            if not bytes then
+                ngx.say("failed to send request: ", err)
+                return
+            end
+
+            ngx.say("request sent: ", bytes)
+
+            while true do
+                local line, err, part = sock:receive()
+                if line then
+                    ngx.say("received: ", line)
+
+                else
+                    ngx.say("failed to receive a line: ", err, " [", part, "]")
+                    break
+                end
+            end
+
+            ok, err = sock:close()
+            ngx.say("close: ", ok, " ", err)
+        }
+    }
+
+    location /foo {
+        content_by_lua_block {
+            ngx.say(ngx.req.get_headers()["Foo"])
+        }
+        more_clear_headers Date;
+    }
+--- request
+GET /t
+--- response_body
+connected: 1
+request sent: 73
+received: HTTP/1.1 200 OK
+received: Server: nginx
+received: Content-Type: text/plain
+received: Content-Length: 10
+received: Connection: close
+received: 
+received: 3.1415926
+failed to receive a line: closed []
+close: 1 nil
+--- no_error_log
+[error]
+
+
+
+=== TEST 71: send numbers
+the maximum number of significant digits is 14 in lua
+--- config
+    server_tokens off;
+    location /t {
+        #set $port 5000;
+        set $port $TEST_NGINX_SERVER_PORT;
+
+        content_by_lua_block {
+            local sock = ngx.socket.tcp()
+            local port = ngx.var.port
+            local ok, err = sock:connect("127.0.0.1", port)
+            if not ok then
+                ngx.say("failed to connect: ", err)
+                return
+            end
+
+            ngx.say("connected: ", ok)
+
+            local req = {"GET", " ", "/foo", " HTTP/", 1, ".", 0, "\r\n",
+                         "Host: localhost\r\n", "Connection: close\r\n",
+                         "Foo: "}
+            -- req = "OK"
+
+            local total_bytes = 0;
+            local bytes, err = sock:send(req)
+            if not bytes then
+                ngx.say("failed to send request: ", err)
+                return
+            end
+            total_bytes = total_bytes + bytes;
+
+            bytes, err = sock:send(3.14159265357939723846)
+            if not bytes then
+                ngx.say("failed to send request: ", err)
+                return
+            end
+            total_bytes = total_bytes + bytes;
+
+            bytes, err = sock:send(31415926)
+            if not bytes then
+                ngx.say("failed to send request: ", err)
+                return
+            end
+            total_bytes = total_bytes + bytes;
+
+            bytes, err = sock:send("\r\n\r\n")
+            if not bytes then
+                ngx.say("failed to send request: ", err)
+                return
+            end
+            total_bytes = total_bytes + bytes;
+
+            ngx.say("request sent: ", total_bytes)
+
+            while true do
+                local line, err, part = sock:receive()
+                if line then
+                    ngx.say("received: ", line)
+
+                else
+                    ngx.say("failed to receive a line: ", err, " [", part, "]")
+                    break
+                end
+            end
+
+            ok, err = sock:close()
+            ngx.say("close: ", ok, " ", err)
+        }
+    }
+
+    location /foo {
+        content_by_lua_block {
+            ngx.say(ngx.req.get_headers()["Foo"])
+        }
+        more_clear_headers Date;
+    }
+--- request
+GET /t
+--- response_body
+connected: 1
+request sent: 87
+received: HTTP/1.1 200 OK
+received: Server: nginx
+received: Content-Type: text/plain
+received: Content-Length: 24
+received: Connection: close
+received: 
+received: 3.141592653579431415926
+failed to receive a line: closed []
+close: 1 nil
+--- no_error_log
+[error]
+
+
+
+=== TEST 72: port is not number
+--- config
+    server_tokens off;
+    location = /t {
+        set $port $TEST_NGINX_SERVER_PORT;
+        content_by_lua_block {
+            local sock = ngx.socket.tcp()
+            sock:settimeout(500)
+
+            local ok, err = sock:connect("127.0.0.1")
+            if not ok then
+                ngx.say("connect failed: ", err)
+            end
+
+            local ok, err = sock:connect("127.0.0.1", nil)
+            if not ok then
+                ngx.say("connect failed: ", err)
+            end
+
+            local ok, err = sock:connect("127.0.0.1", {})
+            if not ok then
+                ngx.say("connect failed: ", err)
+            end
+
+            ngx.say("finish")
+        }
+    }
+
+--- request
+GET /t
+--- response_body
+connect failed: missing the port number
+connect failed: missing the port number
+connect failed: missing the port number
+finish
+--- no_error_log
+[error]

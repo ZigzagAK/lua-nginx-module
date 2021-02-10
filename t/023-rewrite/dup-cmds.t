@@ -43,7 +43,7 @@ GET /t
 [error]
 --- must_die
 --- error_log eval
-qr/\[emerg\] .*? Lua code block missing the closing long bracket "]]" in .*?nginx\.conf:41/
+qr/\[emerg\] .*? Lua code block missing the closing long bracket "]]" in .*?nginx\.conf:45/
 
 
 
